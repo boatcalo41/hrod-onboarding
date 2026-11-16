@@ -658,6 +658,25 @@ const state = {
    and polls every POLL_MS to approximate realtime (Apps Script / Sheets
    have no push-realtime channel like Firestore does). */
 const API_URL_KEY = "HROD_API_URL";
+const SESSION_KEY = "HROD_SESSION";
+// Keeps the logged-in session across an accidental page reload (e.g. the
+// browser reloading a background tab, or a new deploy forcing a refresh) —
+// without this, any reload drops the user straight back to the login screen
+// even though nothing about "being logged in" actually changed.
+function saveSession(){
+  try{
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ role: state.role, selectedId: state.selectedId }));
+  }catch(e){ /* storage unavailable — session just won't survive a reload */ }
+}
+function loadSession(){
+  try{
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function clearSession(){
+  try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+}
 const POLL_MS = 4000;
 let pollTimer = null;
 
@@ -834,12 +853,14 @@ function attemptEmployeeLogin(){
   state.role = "employee";
   state.selectedId = match[0];
   state.portalTab = "dashboard";
+  saveSession();
   render();
 }
 function loginAsAdminDemo(role){
   state.authed = true;
   state.loginError = "";
   state.role = role;
+  saveSession();
   render();
 }
 function logout(){
@@ -847,6 +868,7 @@ function logout(){
   state.loginCode = "";
   state.loginError = "";
   state.selectedId = null;
+  clearSession();
   render();
 }
 function renderLogin(){
@@ -2401,6 +2423,12 @@ function openSettingsModal(){
 
 /* ============== BOOT ============== */
 (function boot(){
+  const session = loadSession();
+  if(session && session.role){
+    state.authed = true;
+    state.role = session.role;
+    state.selectedId = session.selectedId || null;
+  }
   render();
   startPolling();
 })();
