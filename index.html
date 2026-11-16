@@ -392,6 +392,7 @@ const state = {
   selectedId: null,
   view: "dashboard", // dashboard | employee | policies
   activeTab: "info",
+  portalTab: "dashboard", // Employee Portal section (used when role === "employee")
   loading: true,
   dbReady: false,     // true once the Apps Script API has answered at least once
   apiConfigured: false,
@@ -541,7 +542,37 @@ function render(){
 }
 
 /* ---------- SIDEBAR ---------- */
+const PORTAL_SECTIONS = [
+  {key:"dashboard", icon:"🏠", label:"Dashboard"},
+  {key:"passport", icon:"📘", label:"My Passport"},
+  {key:"journey", icon:"🧭", label:"My Journey"},
+  {key:"missions", icon:"🎯", label:"My Missions"},
+  {key:"learning", icon:"📚", label:"Learning Center"},
+  {key:"assessment", icon:"📊", label:"Assessment"},
+  {key:"feedback", icon:"💬", label:"Feedback"},
+  {key:"achievements", icon:"🏆", label:"My Achievements"},
+];
+
 function renderSidebar(){
+  const sidebarHead = el("div",{class:"sidebar-head"},[
+    el("div",{class:"brand"},[
+      el("img",{src:LOGO_URL, alt:"ALLIED-TEK"}),
+      el("div",{class:"brand-text"},["HROD", el("small",{},"Onboarding & Offboarding")])
+    ])
+  ]);
+  const roleBox = el("div",{class:"role-box"},[
+    el("label",{},"มุมมองการใช้งาน (Role)"),
+    el("select",{onchange:(e)=>{ state.role=e.target.value; render(); }},
+      Object.entries(ROLE_LABEL).map(([v,l])=> el("option",{value:v, selected: v===state.role? "selected": null}, l))
+    )
+  ]);
+  const settingsBtn = el("button",{class:"btn btn-block", style:"margin-top:8px;", onclick: openSettingsModal},
+    "⚙️ ตั้งค่าฐานข้อมูล " + (state.apiConfigured ? (state.dbReady? "✅" : "⚠️") : "❗"));
+
+  if(state.role==="employee"){
+    return el("div",{class:"sidebar"},[ sidebarHead, roleBox, renderPortalSidebarBody(settingsBtn) ]);
+  }
+
   const emps = Object.entries(state.employees).map(([id,d])=>({id,...d}));
   emps.sort((a,b)=> (a.name||"").localeCompare(b.name||"", "th"));
   const search = state.searchTerm || "";
@@ -560,18 +591,8 @@ function renderSidebar(){
   }) : [el("div",{class:"emp-meta",style:"padding:16px 6px;"}, state.loading? "กำลังโหลด..." : "ยังไม่มีพนักงานในระบบ")]);
 
   const sidebar = el("div",{class:"sidebar"},[
-    el("div",{class:"sidebar-head"},[
-      el("div",{class:"brand"},[
-        el("img",{src:LOGO_URL, alt:"ALLIED-TEK"}),
-        el("div",{class:"brand-text"},["HROD", el("small",{},"Onboarding & Offboarding")])
-      ])
-    ]),
-    el("div",{class:"role-box"},[
-      el("label",{},"มุมมองการใช้งาน (Role)"),
-      el("select",{onchange:(e)=>{ state.role=e.target.value; render(); }},
-        Object.entries(ROLE_LABEL).map(([v,l])=> el("option",{value:v, selected: v===state.role? "selected": null}, l))
-      )
-    ]),
+    sidebarHead,
+    roleBox,
     el("div",{class:"nav-link"+(state.view==="policies"?" active":""), onclick:()=>{ state.view="policies"; render(); }}, "📋 นโยบาย & สวัสดิการบริษัท"),
     el("div",{class:"emp-search"},[
       el("input",{placeholder:"ค้นหาพนักงาน...", value:search, oninput:(e)=>{ state.searchTerm=e.target.value; render(); }})
@@ -579,11 +600,36 @@ function renderSidebar(){
     list,
     el("div",{class:"sidebar-foot"},[
       el("button",{class:"btn btn-primary btn-block", onclick: openAddEmployeeModal}, "+ เพิ่มพนักงานใหม่"),
-      el("button",{class:"btn btn-block", style:"margin-top:8px;", onclick: openSettingsModal},
-        "⚙️ ตั้งค่าฐานข้อมูล " + (state.apiConfigured ? (state.dbReady? "✅" : "⚠️") : "❗"))
+      settingsBtn
     ])
   ]);
   return sidebar;
+}
+
+function renderPortalSidebarBody(settingsBtn){
+  const emps = Object.entries(state.employees).map(([id,d])=>({id,...d}));
+  emps.sort((a,b)=> (a.name||"").localeCompare(b.name||"", "th"));
+  if(!state.selectedId && emps.length) state.selectedId = emps[0].id;
+
+  const wrap = el("div",{style:"display:flex;flex-direction:column;flex:1;min-height:0;"});
+  wrap.appendChild(el("div",{style:"margin:0 16px 14px;padding:10px;background:var(--chip);border-radius:10px;"},[
+    el("label",{style:"font-size:11px;color:var(--sub);display:block;margin-bottom:4px;"}, "คุณคือ (demo — ยังไม่มีระบบ login)"),
+    emps.length
+      ? el("select",{onchange:(e)=>{ state.selectedId=e.target.value; render(); }},
+          emps.map(e=> el("option",{value:e.id, selected: e.id===state.selectedId?"selected":null}, e.name||"(ไม่มีชื่อ)")))
+      : el("div",{style:"font-size:12.5px;color:var(--sub);"}, "ยังไม่มีพนักงานในระบบ")
+  ]));
+
+  const nav = el("div",{style:"flex:1;overflow-y:auto;padding:0 10px;"}, PORTAL_SECTIONS.map(s=>
+    el("div",{
+      class:"nav-link"+(state.portalTab===s.key?" active":""),
+      style:"margin:0 6px 8px;",
+      onclick:()=>{ state.portalTab=s.key; render(); }
+    }, s.icon+"  "+s.label)
+  ));
+  wrap.appendChild(nav);
+  wrap.appendChild(el("div",{class:"sidebar-foot"},[ settingsBtn ]));
+  return wrap;
 }
 
 /* ---------- MAIN ---------- */
@@ -591,7 +637,9 @@ function renderMain(){
   const main = el("div",{class:"main"});
   main.appendChild(renderTopbar());
   const content = el("div",{class:"content"});
-  if(state.view==="policies"){
+  if(state.role==="employee"){
+    content.appendChild(renderEmployeePortal());
+  } else if(state.view==="policies"){
     content.appendChild(renderPoliciesView());
   } else if(!state.selectedId || !state.employees[state.selectedId]){
     content.appendChild(renderDashboard());
@@ -603,6 +651,19 @@ function renderMain(){
 }
 
 function renderTopbar(){
+  if(state.role==="employee"){
+    const emp = state.selectedId ? state.employees[state.selectedId] : null;
+    const section = PORTAL_SECTIONS.find(s=>s.key===state.portalTab) || PORTAL_SECTIONS[0];
+    return el("div",{class:"topbar"},[
+      el("div",{},[
+        el("h1",{}, section.icon+" "+section.label),
+        el("div",{class:"sub"}, emp ? `สวัสดี ${emp.nickname||emp.name||""} · ${emp.position||"-"}` : "เลือกชื่อของคุณที่แถบด้านซ้ายเพื่อเริ่มต้น")
+      ]),
+      el("div",{style:"display:flex;gap:8px;align-items:center;"},[
+        el("span",{class:"pill"}, "มุมมอง: " + ROLE_LABEL[state.role])
+      ])
+    ]);
+  }
   const emp = (state.view==="employee" && state.selectedId) ? state.employees[state.selectedId] : null;
   const isPolicies = state.view==="policies";
   return el("div",{class:"topbar"},[
@@ -758,6 +819,186 @@ function renderEmployeeDetail(emp, id){
   else if(state.activeTab==="offboarding") panel.appendChild(renderOffboardingTab(emp, id));
   else if(state.activeTab==="kpi") panel.appendChild(renderKpiTab(emp, id));
   wrap.appendChild(panel);
+  return wrap;
+}
+
+/* ============== EMPLOYEE PORTAL ============== */
+const MISSION_META = {
+  phase1:{icon:"🎒", label:"ภารกิจที่ 1 · ก่อนเริ่มงาน"},
+  phase2:{icon:"🚀", label:"ภารกิจที่ 2 · สัปดาห์แรก (Day 1–7)"},
+  phase3:{icon:"🧭", label:"ภารกิจที่ 3 · ช่วง 30–90 วัน"},
+  phase4:{icon:"🏁", label:"ภารกิจที่ 4 · โค้งสุดท้าย 90–120 วัน"},
+};
+
+function renderEmployeePortal(){
+  const panel = el("div",{class:"tab-panel"});
+  const id = state.selectedId;
+  const emp = id ? state.employees[id] : null;
+  if(!emp){
+    panel.appendChild(el("div",{class:"empty-state"},[
+      el("div",{class:"big"},"👋"),
+      el("div",{}, "เลือกชื่อของคุณที่กล่อง \"คุณคือ\" ด้านซ้ายก่อนนะครับ")
+    ]));
+    return panel;
+  }
+  const map = {
+    dashboard: renderPortalDashboard,
+    passport: renderPassportTab,
+    journey: renderPortalJourneyTab,
+    missions: renderMissionsTab,
+    learning: renderPoliciesView,
+    assessment: renderPortalAssessmentTab,
+    feedback: renderPortalFeedbackTab,
+    achievements: renderAchievementsTab,
+  };
+  const fn = map[state.portalTab] || renderPortalDashboard;
+  panel.appendChild(fn.length >= 2 ? fn(emp, id) : fn(emp));
+  return panel;
+}
+
+function portalDaysSinceStart(emp){
+  if(!emp.startDate) return null;
+  const start = new Date(emp.startDate+"T00:00:00");
+  const now = new Date();
+  return Math.max(0, Math.floor((now-start)/86400000));
+}
+
+function portalOverallProgress(emp){
+  const phases=["phase1","phase2","phase3","phase4"];
+  const allItems = phases.flatMap(p=> (emp.onboarding && emp.onboarding[p]) || []);
+  return phaseProgress(allItems);
+}
+
+function renderPortalDashboard(emp, id){
+  const wrap = el("div",{});
+  const days = portalDaysSinceStart(emp);
+  const prog = portalOverallProgress(emp);
+  const ringColor = prog>=100 ? "var(--brand-green)" : "var(--brand)";
+
+  wrap.appendChild(el("div",{class:"card", style:"margin-bottom:18px;display:flex;align-items:center;gap:22px;flex-wrap:wrap;"},[
+    el("div",{class:"ring", style:`background:conic-gradient(${ringColor} ${prog*3.6}deg, var(--chip) 0deg);`},[
+      el("div",{class:"ring-num"}, prog+"%")
+    ]),
+    el("div",{},[
+      el("div",{style:"font-size:18px;font-weight:800;"}, `สวัสดี ${emp.nickname||emp.name||""} 👋`),
+      el("div",{style:"font-size:13px;color:var(--sub);margin-top:4px;"},
+        `${emp.position||"-"} · ${emp.department||"-"}`),
+      el("div",{style:"font-size:13px;color:var(--sub);margin-top:2px;"},
+        days!=null ? `เริ่มงานมาแล้ว ${days} วัน (${fmtDate(emp.startDate)})` : "ยังไม่ระบุวันเริ่มงาน")
+    ])
+  ]));
+
+  const phaseKeys = [["phase1","เฟส 1"],["phase2","เฟส 2"],["phase3","เฟส 3"],["phase4","เฟส 4"]];
+  const onb = emp.onboarding || {};
+  wrap.appendChild(el("div",{class:"section-title"}, "ความคืบหน้าแต่ละภารกิจ"));
+  wrap.appendChild(el("div",{class:"pp-stamps"}, phaseKeys.map(([pk,label])=>{
+    const items = onb[pk]||[];
+    const done = items.length>0 && items.every(i=>i.status==="done");
+    return el("div",{class:"pp-stamp"+(done?" done":""), style:"cursor:pointer;", onclick:()=>{ state.portalTab="missions"; render(); }},[
+      el("span",{class:"pp-stamp-icon"}, done?"✅":"⏳"), label
+    ]);
+  })));
+
+  wrap.appendChild(el("div",{class:"section-title"}, "ทางลัด"));
+  const shortcuts = [
+    ["passport","📘","สมุดพกของฉัน"],
+    ["missions","🎯","ภารกิจ Onboarding"],
+    ["learning","📚","ศูนย์การเรียนรู้"],
+    ["assessment","📊","ตัวชี้วัดงาน"],
+    ["feedback","💬","ส่งแบบสะท้อน"],
+    ["achievements","🏆","ความสำเร็จของฉัน"],
+  ];
+  wrap.appendChild(el("div",{class:"biz-grid"}, shortcuts.map(([key,icon,label])=>
+    el("div",{class:"biz-card", style:"cursor:pointer;", onclick:()=>{ state.portalTab=key; render(); }},[
+      el("b",{}, icon+"  "+label), el("span",{},"ดูรายละเอียด →")
+    ])
+  )));
+  return wrap;
+}
+
+function renderPortalJourneyTab(emp, id){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "เส้นทางการ Onboarding ของคุณตั้งแต่วันแรกจนครบทดลองงาน — ติ๊กเองได้เมื่อทำเสร็จ ส่วนที่หัวหน้างาน/พี่เลี้ยงต้องยืนยัน จะมีการติ๊กจากฝั่งเขาเพิ่มเติม"));
+  wrap.appendChild(renderOnboardingTab(emp, id));
+  return wrap;
+}
+
+function renderMissionsTab(emp, id){
+  const wrap = el("div",{});
+  const onb = emp.onboarding || makeItemsFromTemplate(ONB_TEMPLATE);
+  Object.keys(ONB_TEMPLATE).forEach(pk=>{
+    const meta = MISSION_META[pk] || {icon:"🎯", label:pk};
+    const items = onb[pk] || [];
+    const prog = phaseProgress(items);
+    const done = items.length>0 && prog>=100;
+    wrap.appendChild(el("div",{class:"card", style:"margin-bottom:14px;"},[
+      el("div",{style:"display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;"},[
+        el("div",{style:"font-weight:800;font-size:14.5px;"}, meta.icon+"  "+meta.label),
+        el("span",{class:"badge "+(done?"badge-active":"badge-onboarding")}, done? "สำเร็จแล้ว ✅" : prog+"% เสร็จแล้ว")
+      ]),
+      el("div",{class:"progress-bar", style:"width:100%;"},[ el("div",{class:"progress-fill", style:`width:${prog}%`}) ])
+    ]));
+    wrap.appendChild(renderChecklistPhase(pk, ONB_TEMPLATE[pk], items, (newItems)=>{
+      const next = {...onb, [pk]: newItems};
+      saveEmployee(id, {onboarding: next});
+    }, state.role==="hr" || state.role==="manager"));
+  });
+  return wrap;
+}
+
+function renderPortalAssessmentTab(emp, id){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "ตัวชี้วัดงานของตำแหน่งคุณในช่วงทดลองงาน — ใช้ทบทวนตัวเองก่อนคุยกับหัวหน้างานในวันที่ 30 และ 75–90"));
+  wrap.appendChild(renderKpiTab(emp, id));
+  return wrap;
+}
+
+function renderPortalFeedbackTab(emp, id){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "ตอบคำถามส่วนของคุณได้เลย ส่วนของพี่เลี้ยงและ HR จะถูกเติมโดยพวกเขาในภายหลัง"));
+  wrap.appendChild(renderReflectTab(emp, id));
+  return wrap;
+}
+
+function renderAchievementsTab(emp, id){
+  const wrap = el("div",{});
+  const onb = emp.onboarding || {};
+  const phaseKeys = [["phase1","ก่อนเริ่มงาน","🎒"],["phase2","สัปดาห์แรก","🚀"],["phase3","30–90 วัน","🧭"],["phase4","90–120 วัน","🏁"]];
+  const doneCount = phaseKeys.filter(([pk])=>{ const items=onb[pk]||[]; return items.length>0 && items.every(i=>i.status==="done"); }).length;
+  const prog = portalOverallProgress(emp);
+  const days = portalDaysSinceStart(emp);
+
+  wrap.appendChild(el("div",{class:"dash-grid"},[
+    statCard(doneCount+"/4", "ภารกิจที่สำเร็จแล้ว", "🏆", "var(--brand-green)"),
+    statCard(prog+"%", "ความคืบหน้ารวม", "📈", "var(--brand)"),
+    statCard(days!=null?days:"-", "วันที่เริ่มงานมาแล้ว", "📅", "var(--charcoal)"),
+  ]));
+
+  wrap.appendChild(el("div",{class:"section-title"}, "เหรียญตราที่ได้รับ"));
+  wrap.appendChild(el("div",{class:"pp-stamps"}, phaseKeys.map(([pk,label,icon])=>{
+    const items = onb[pk]||[];
+    const done = items.length>0 && items.every(i=>i.status==="done");
+    return el("div",{class:"pp-stamp"+(done?" done":""), style:"width:150px;"},[
+      el("span",{class:"pp-stamp-icon"}, done? icon : "🔒"), label
+    ]);
+  })));
+
+  const refl = emp.reflections || {};
+  const reflDone = REFLECT_ROUNDS.filter(r=> (refl[r.key]?.employeeOpen||"").trim().length>0).length;
+  wrap.appendChild(el("div",{class:"section-title"}, "แบบสะท้อนที่ส่งแล้ว"));
+  wrap.appendChild(el("div",{class:"card"},[
+    el("div",{style:"font-size:13.5px;"}, `ส่งแบบสะท้อนไปแล้ว ${reflDone}/${REFLECT_ROUNDS.length} รอบ`),
+    el("div",{class:"progress-bar", style:"width:100%;margin-top:8px;"},[
+      el("div",{class:"progress-fill", style:`width:${Math.round(reflDone/REFLECT_ROUNDS.length*100)}%;background:var(--brand-green);`})
+    ])
+  ]));
+
+  if(doneCount>=4){
+    wrap.appendChild(el("div",{class:"card", style:"margin-top:18px;text-align:center;background:var(--brand-green-light);border-color:var(--brand-green);"},[
+      el("div",{style:"font-size:32px;"},"🎉"),
+      el("div",{style:"font-weight:800;color:var(--brand-green);margin-top:6px;"}, "ยินดีด้วย! คุณผ่าน Onboarding ครบทุกภารกิจแล้ว")
+    ]));
+  }
   return wrap;
 }
 
