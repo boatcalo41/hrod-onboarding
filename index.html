@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HROD · Onboarding & Offboarding</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#1b1f24; --sub:#6b7280;
+    --line:#e5e7eb; --brand:#0f766e; --brand-ink:#ffffff;
+    --accent:#2563eb; --warn:#b45309; --bad:#b91c1c; --good:#15803d;
+    --chip:#eef2f3;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:"Sarabun","Noto Sans Thai","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink);}
+  .app{display:flex;min-height:100vh;}
+  .sidebar{width:280px;flex:0 0 280px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;}
+  .sidebar-head{padding:18px 16px 12px;border-bottom:1px solid var(--line);}
+  .brand{font-weight:700;font-size:18px;letter-spacing:.3px;color:var(--brand);display:flex;align-items:center;gap:10px;}
+  .brand img{height:34px;width:auto;display:block;}
+  .brand .brand-text small{display:block;font-weight:400;font-size:11px;color:var(--sub);margin-top:1px;letter-spacing:0;}
+  .role-box{margin:12px 16px;padding:10px;background:var(--chip);border-radius:10px;}
+  .role-box label{font-size:11px;color:var(--sub);display:block;margin-bottom:4px;}
+  select, input, textarea{font-family:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:#fff;color:var(--ink);width:100%;}
+  select:focus,input:focus,textarea:focus{outline:2px solid var(--brand);outline-offset:1px;}
+  .emp-search{margin:0 16px 8px;}
+  .emp-list{flex:1;overflow-y:auto;padding:4px 10px 12px;}
+  .emp-item{padding:10px 10px;border-radius:10px;cursor:pointer;margin-bottom:4px;border:1px solid transparent;}
+  .emp-item:hover{background:var(--chip);}
+  .emp-item.active{background:#e6f4f2;border-color:var(--brand);}
+  .emp-name{font-weight:600;font-size:14px;}
+  .emp-meta{font-size:12px;color:var(--sub);margin-top:2px;}
+  .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600;margin-top:5px;}
+  .badge-onboarding{background:#fef3c7;color:#92400e;}
+  .badge-active{background:#dcfce7;color:#166534;}
+  .badge-offboarding{background:#fee2e2;color:#991b1b;}
+  .badge-terminated{background:#e5e7eb;color:#374151;}
+  .sidebar-foot{padding:12px 16px;border-top:1px solid var(--line);}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:13px;font-weight:600;cursor:pointer;}
+  .btn:hover{background:var(--chip);}
+  .btn-primary{background:var(--brand);color:var(--brand-ink);border-color:var(--brand);}
+  .btn-primary:hover{background:#0c5f58;}
+  .btn-danger{background:#fff;color:var(--bad);border-color:#fecaca;}
+  .btn-danger:hover{background:#fef2f2;}
+  .btn-block{width:100%;justify-content:center;}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;}
+  .topbar{padding:16px 28px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .topbar h1{font-size:18px;margin:0;}
+  .topbar .sub{font-size:13px;color:var(--sub);margin-top:2px;}
+  .content{flex:1;padding:24px 28px;overflow-y:auto;}
+  .dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;}
+  .stat-num{font-size:26px;font-weight:700;}
+  .stat-label{font-size:12px;color:var(--sub);margin-top:4px;}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px;flex-wrap:wrap;}
+  .tab{padding:9px 14px;font-size:13px;font-weight:600;color:var(--sub);cursor:pointer;border-bottom:2px solid transparent;}
+  .tab.active{color:var(--brand);border-color:var(--brand);}
+  .tab:hover{color:var(--ink);}
+  .section-title{font-size:15px;font-weight:700;margin:22px 0 10px;display:flex;align-items:center;gap:8px;}
+  .section-title .count{font-size:12px;font-weight:500;color:var(--sub);}
+  .phase-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:14px;overflow:hidden;}
+  .phase-head{padding:12px 16px;background:#fbfbfc;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+  .phase-head .ph-title{font-weight:700;font-size:14px;}
+  .phase-head .ph-sub{font-size:12px;color:var(--sub);}
+  .progress-bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;width:120px;}
+  .progress-fill{height:100%;background:var(--brand);}
+  .item-row{display:grid;grid-template-columns:34px 1fr 150px 170px 32px;gap:10px;align-items:start;padding:10px 16px;border-top:1px solid #f1f2f4;}
+  .item-row:first-of-type{border-top:none;}
+  .item-row label.chk{display:flex;align-items:center;justify-content:center;}
+  .item-row input[type=checkbox]{width:18px;height:18px;cursor:pointer;}
+  .item-label{font-size:13.5px;line-height:1.5;padding-top:2px;}
+  .item-note{font-size:12.5px;}
+  .item-date{font-size:12.5px;}
+  .del-btn{background:none;border:none;color:var(--sub);cursor:pointer;font-size:16px;padding:2px;}
+  .del-btn:hover{color:var(--bad);}
+  .add-item-row{display:flex;gap:8px;padding:10px 16px;background:#fafafa;}
+  .add-item-row input{flex:1;}
+  .reflect-round{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px;}
+  .reflect-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;gap:6px;}
+  .reflect-head h3{margin:0;font-size:14.5px;}
+  .resp-block{margin-top:10px;}
+  .resp-block > .resp-title{font-size:12.5px;font-weight:700;color:var(--brand);text-decoration:underline;margin-bottom:8px;}
+  .q-row{display:grid;grid-template-columns:1fr 240px;gap:14px;padding:9px 0;border-top:1px solid #f1f2f4;align-items:start;}
+  .q-row:first-child{border-top:none;}
+  .q-text{font-size:13px;line-height:1.5;}
+  .q-ans{display:flex;flex-direction:column;gap:6px;}
+  .seg{display:flex;gap:4px;}
+  .seg button{flex:1;font-size:11.5px;padding:5px 2px;border-radius:7px;border:1px solid var(--line);background:#fff;cursor:pointer;color:var(--sub);}
+  .seg button.sel-yes.on{background:#dcfce7;color:#166534;border-color:#86efac;}
+  .seg button.sel-part.on{background:#fef3c7;color:#92400e;border-color:#fcd34d;}
+  .seg button.sel-no.on{background:#fee2e2;color:#991b1b;border-color:#fca5a5;}
+  .note-mini{font-size:12px;width:100%;}
+  .free-text{width:100%;min-height:64px;resize:vertical;font-size:13px;}
+  .field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
+  .field{display:flex;flex-direction:column;gap:4px;}
+  .field label{font-size:12px;color:var(--sub);font-weight:600;}
+  .empty-state{text-align:center;padding:60px 20px;color:var(--sub);}
+  .empty-state .big{font-size:40px;margin-bottom:10px;}
+  .pill{font-size:11px;padding:3px 9px;border-radius:999px;background:var(--chip);color:var(--sub);font-weight:600;}
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
+  .modal{background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:88vh;overflow-y:auto;padding:22px 24px;}
+  .modal h2{margin:0 0 4px;font-size:17px;}
+  .modal .sub{font-size:12.5px;color:var(--sub);margin-bottom:16px;}
+  .modal-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
+  .toast{position:fixed;bottom:20px;right:20px;background:#1b1f24;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:60;opacity:0;transition:opacity .25s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .cat-title{font-size:12.5px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;margin:18px 0 6px 2px;}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px;}
+  .lock-note{font-size:12px;color:var(--sub);background:var(--chip);border-radius:8px;padding:8px 12px;margin-bottom:12px;}
+  .scrollx{overflow-x:auto;}
+  .passport-wrap{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;}
+  .passport-header{background:linear-gradient(135deg,#0f766e,#134e4a);color:#fff;padding:26px 30px;}
+  .passport-header .pp-brand{font-size:20px;font-weight:800;letter-spacing:1px;display:flex;align-items:center;gap:12px;}
+  .passport-header .pp-brand img{height:42px;width:auto;background:#fff;border-radius:8px;padding:4px 8px;}
+  .passport-header .pp-brand small{display:block;font-weight:400;font-size:12px;opacity:.85;margin-top:2px;letter-spacing:0;}
+  .passport-header .pp-title{margin-top:14px;font-size:22px;font-weight:700;}
+  .passport-header .pp-sub{font-size:13px;opacity:.9;margin-top:2px;}
+  .passport-body{padding:24px 30px;}
+  .pp-table{width:100%;border-collapse:collapse;margin-bottom:20px;}
+  .pp-table td{border:1px solid var(--line);padding:9px 12px;font-size:13.5px;vertical-align:top;}
+  .pp-table td.pp-label{background:#f3f6f6;font-weight:700;width:190px;color:#134e4a;}
+  .pp-section-h{font-size:14px;font-weight:800;color:#0f766e;margin:22px 0 10px;border-bottom:2px solid #0f766e;padding-bottom:6px;}
+  .pp-conn-table{width:100%;border-collapse:collapse;margin-bottom:18px;}
+  .pp-conn-table th{background:#0f766e;color:#fff;font-size:12px;padding:8px 10px;text-align:left;}
+  .pp-conn-table td{border:1px solid var(--line);padding:9px 10px;font-size:13px;}
+  .pp-stamps{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;}
+  .pp-stamp{width:130px;text-align:center;padding:14px 8px;border:2px dashed var(--line);border-radius:12px;font-size:12px;color:var(--sub);}
+  .pp-stamp.done{border-color:#0f766e;color:#0f766e;background:#ecfaf8;font-weight:700;}
+  .pp-stamp .pp-stamp-icon{font-size:26px;display:block;margin-bottom:4px;}
+  .pp-sign-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-top:26px;}
+  .pp-sign-box{border-top:1px dashed var(--sub);padding-top:8px;font-size:12px;color:var(--sub);text-align:center;}
+  .pp-print-btn{margin-bottom:14px;}
+  @media print{ .sidebar,.topbar,.tabs,.pp-print-btn{display:none !important;} .content{padding:0 !important;} }
+  .nav-link{display:block;margin:0 16px 10px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:700;color:var(--brand);background:#e6f4f2;cursor:pointer;border:1px solid transparent;}
+  .nav-link:hover{border-color:var(--brand);}
+  .nav-link.active{background:var(--brand);color:#fff;}
+  .policy-card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:18px;}
+  .policy-card h3{margin:0;padding:12px 16px;font-size:14px;background:#fbfbfc;border-bottom:1px solid var(--line);}
+  .policy-card img{display:block;width:100%;height:auto;}
+  .biz-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 20px;}
+  .biz-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;}
+  .biz-card b{color:var(--brand);display:block;margin-bottom:4px;font-size:13.5px;}
+  .biz-card span{font-size:12.5px;color:var(--sub);}
+  .kpi-table{width:100%;border-collapse:collapse;margin-top:10px;}
+  .kpi-table th{background:#0f766e;color:#fff;font-size:12px;padding:8px 10px;text-align:left;}
+  .kpi-table td{border:1px solid var(--line);padding:9px 10px;font-size:12.5px;vertical-align:top;}
+  @media (max-width:800px){
+    .sidebar{display:none;}
+    .q-row{grid-template-columns:1fr;}
+    .item-row{grid-template-columns:28px 1fr;}
+    .item-row .item-note,.item-row .item-date,.item-row .del-btn{grid-column:2;}
+  }
+</style>
+</head>
+<body>
+<div id="root" class="app"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ============== TEMPLATES ============== */
+const ONB_TEMPLATE = {
+  phase1: { title: "เฟส 1 · ก่อนวันเริ่มงาน (Pre-Onboarding)", items: [
+    "จัดทำสัญญาจ้างและเตรียมเอกสารสมัครงานให้ครบถ้วน",
+    "แจ้งฝ่าย IT จัดเตรียมคอมพิวเตอร์ อีเมล และสิทธิ์เข้าใช้งานระบบ (ถ้ามี)",
+    "จัดเตรียมโต๊ะทำงานและอุปกรณ์สำนักงานพื้นฐาน (ถ้ามี)",
+    "ตรวจสอบข้อมูลส่วนบุคคลในระบบ Humansoft ถูกต้องครบถ้วน",
+    "โทรคอนเฟิร์มวันเริ่มงาน เวลา สถานที่ ผู้รับการติดต่อ ทบทวนการแต่งกาย",
+    "แจ้งต้นสังกัด / พี่เลี้ยง เพื่อเตรียมดูแลพนักงานใหม่"
+  ]},
+  phase2: { title: "เฟส 2 · เริ่มต้นการทำงาน (Day 1–7)", items: [
+    "ปฐมนิเทศกฎระเบียบ สวัสดิการ วัฒนธรรมองค์กร และความปลอดภัย",
+    "เซ็นสัญญาจ้าง",
+    "แจ้งรายละเอียดหน้าที่การทำงานตาม Smart JD",
+    "พี่เลี้ยงคือใคร หัวหน้างานโดยตรงคือใคร (ให้พนักงานตอบชื่อเอง)",
+    "พาเดินแนะนำตัวกับหัวหน้างานและพี่เลี้ยง รวมถึงทีมที่เกี่ยวข้อง",
+    "พนักงานระดับผู้จัดการพาแนะนำตัวกับผู้บริหารและผู้จัดการแผนกอื่นๆ",
+    "ส่งมอบพนักงานให้พี่เลี้ยง (Buddy) ดูแลเรื่องการทานอาหารกลางวัน",
+    "ฝ่าย IT แนะนำการเข้าถึงระบบไอทีของบริษัท (ถ้ามี)",
+    "พาทัวร์อาคารสถานที่บริษัท"
+  ]},
+  phase3: { title: "เฟส 3 · ติดตามและประเมินผล (30–90 วัน)", items: [
+    "ตรวจสอบการใช้งานระบบงานต่างๆ เช่น ระบบเข้า-ออกงาน / การลา / IT",
+    "สอบถามความเป็นอยู่ สายบังคับบัญชา เพื่อนสนิทหรือพี่เลี้ยงคือใคร",
+    "หัวข้อที่ถูกสอนงานจากพี่เลี้ยง / หัวหน้างาน",
+    "ผลการปฏิบัติงาน ทำงานอะไรมาแล้วบ้าง",
+    "มีปัญหาอะไรบ้างในแผนก / ต้องการความช่วยเหลือ",
+    "มีคำพูดหรือการกระทำของใครที่ทำให้ไม่สบายใจไหม มีอะไรอยากให้ HR รู้",
+    "ทบทวนหัวข้อที่ปฐมนิเทศ เช่น ผังองค์กร สายงานบังคับบัญชา",
+    "ถ้าพรุ่งนี้ป่วยต้องแจ้งใครทางไหน ก่อนกี่โมง",
+    "มีลาหยุดงานหรือเหตุจำเป็นเพิ่มเติมหรือไม่ (ถ้ามี)"
+  ]},
+  phase4: { title: "เฟส 4 · ติดตามและประเมินผล (90–120 วัน) หลังผ่านทดลองงาน", items: [
+    "ตรวจสอบการสอนงานจากเอกสาร OJT",
+    "สัมภาษณ์เกี่ยวกับระบบมาตรฐาน JD / KPI / WI ของตนเอง",
+    "วัฒนธรรมองค์กรมีกี่ข้อ อะไรบ้าง",
+    "Core Value 5 ข้อ: ยกตัวอย่างที่เห็นคนในแผนกทำจริง 1 เรื่อง (ไม่ต้องท่องชื่อ)",
+    "ที่ผ่านมาเคยร่วมกิจกรรมอะไรบ้าง ดีไม่ดี อย่างไร",
+    "แจ้งสวัสดิการที่จะได้รับหลังผ่านทดลองงาน",
+    "มีปัญหาอะไรบ้างในแผนก / ต้องการความช่วยเหลือ / สนับสนุน"
+  ]}
+};
+
+const OFF_TEMPLATE = {
+  notice: { title: "แจ้งลาออก / สิ้นสุดสัญญา", items: [
+    "ได้รับหนังสือลาออก/แจ้งสิ้นสุดสัญญา พร้อมระบุวันทำงานวันสุดท้าย",
+    "หัวหน้างาน/ผู้จัดการอนุมัติ และแจ้ง HR อย่างเป็นทางการ",
+    "แจ้งแผนกที่เกี่ยวข้อง (IT, บัญชี, Admin, ธุรการ)"
+  ]},
+  handover: { title: "ส่งมอบงาน (Knowledge Transfer)", items: [
+    "จัดทำเอกสารสรุปสถานะงาน / งานค้างที่ต้องส่งต่อ",
+    "ส่งมอบงานให้ผู้รับผิดชอบคนใหม่ หรือหัวหน้างาน",
+    "ถ่ายทอดความรู้ / สอนงานให้ผู้รับมอบงาน"
+  ]},
+  assets: { title: "คืนทรัพย์สินบริษัท (Asset Return)", items: [
+    "คืนบัตรพนักงาน / บัตรจอดรถ",
+    "คืนอุปกรณ์ IT (โน้ตบุ๊ก โทรศัพท์ อุปกรณ์เสริม)",
+    "คืนเครื่องมือ / อุปกรณ์ Safety / ชุดยูนิฟอร์ม",
+    "คืนเอกสาร / กุญแจ / อุปกรณ์อื่นๆ"
+  ]},
+  access: { title: "ปิดระบบและสิทธิ์การเข้าถึง (IT & Access)", items: [
+    "ปิดสิทธิ์เข้าระบบอีเมล / Humansoft / ระบบงานภายใน",
+    "ปิดสิทธิ์เข้าอาคาร / ลายนิ้วมือ / บัตรผ่าน",
+    "สำรองข้อมูลงานก่อนปิดบัญชีผู้ใช้ (ถ้ามี)"
+  ]},
+  finance: { title: "การเงินและสวัสดิการ (Finance & Benefits)", items: [
+    "คำนวณเงินเดือน/ค่าจ้างวันสุดท้าย และค่าชดเชยตามกฎหมาย (ถ้ามี)",
+    "ตรวจสอบยอดเงินกู้/เงินยืมบริษัทคงค้าง",
+    "แจ้งออกจากกองทุนประกันสังคม / กองทุนสำรองเลี้ยงชีพ",
+    "ออกหนังสือรับรองการทำงาน / ใบผ่านงาน"
+  ]},
+  exit: { title: "Exit Interview & ปิดงาน", items: [
+    "สัมภาษณ์ Exit Interview (เหตุผลลาออก / ข้อเสนอแนะ)",
+    "สรุปผลและส่งรายงานให้ผู้บริหาร / HR",
+    "ปิดสถานะพนักงานในระบบ (Terminated)"
+  ]}
+};
+
+const REFLECT_ROUNDS = [
+  { key: "r1", title: "แบบสะท้อน 2 ทาง · รอบ 1 (วันที่ 7)", openQ: "สิ่งที่ฉันยังไม่รู้ แต่อยากรู้ในสัปดาห์หน้า" },
+  { key: "r2", title: "แบบสะท้อน 2 ทาง · รอบ 2 (วันที่ 30)", openQ: "งานที่ทำอยู่ตรงกับที่คิดไว้ตอนสมัครไหม (ถ้าไม่ ต่างตรงไหน)" },
+  { key: "r3", title: "แบบสะท้อน 3 ทาง · รอบ 3 (วันที่ 45–60)", openQ: "มีอะไรอยากบอก HR เพิ่มเติมก่อนครบทดลองงานหรือไม่" }
+];
+const EMP_QUESTIONS = [
+  "ฉันรู้ว่าพี่เลี้ยงและหัวหน้าโดยตรงของฉันคือใคร และหาตัวเจอเมื่อต้องการ",
+  "สัปดาห์ที่ผ่านมาฉันได้รับการสอนงานตามที่ตกลงไว้ (ไม่ใช่ปล่อยให้ดูเอง)",
+  "ฉันกล้าถามเมื่อไม่แน่ใจ โดยไม่ถูกดุหรือถูกมองว่าโง่",
+  "ไม่มีใครใช้คำพูดรุนแรง ล้อเลียนเรื่องส่วนตัว หรือทำอะไรที่ทำให้ฉันไม่สบายใจ",
+  "ถ้ามีปัญหา ฉันรู้ว่าต้องไปบอกใคร และเชื่อว่าจะมีคนจัดการ"
+];
+const BUDDY_QUESTIONS = [
+  "พนักงานใหม่มาตรงเวลา ตั้งใจทำตามที่สอนได้",
+  "ถามเมื่อไม่แน่ใจ ไม่เดาทำเอง",
+  "เข้ากับคนในแผนกได้ ไม่มีปัญหาเรื่องการอยู่ร่วมกัน",
+  "ฉันมีเวลาสอนงานพอ"
+];
+
+const ROLE_LABEL = { hr: "ฝ่ายบุคคล (HR)", manager: "หัวหน้างาน / พี่เลี้ยง", employee: "พนักงานใหม่" };
+
+const POLICY_SECTIONS = [
+  { title: "วันและเวลาทำงานปกติ เวลาพัก และวันหยุด", url: "assets/policy-worktime.png" },
+  { title: "รอบการจ่ายค่าจ้าง", url: "assets/policy-payroll.png" },
+  { title: "การบันทึกเวลาเข้า-ออกงาน (สแกนใบหน้า App Human Soft)", url: "assets/policy-facescan.png" },
+  { title: "การลาพักร้อน (ผ่านทดลองงาน)", url: "assets/policy-vacation.png" },
+  { title: "การลากิจ (ผ่านทดลองงาน)", url: "assets/policy-personalleave.png" },
+  { title: "ลาป่วย", url: "assets/policy-sickleave.png" },
+  { title: "เงื่อนไขทดลองงาน (ไม่เกิน 119 วัน)", url: "assets/policy-probation.png" },
+  { title: "สวัสดิการพนักงาน", url: "assets/policy-benefits.png" },
+  { title: "ระเบียบการบันทึกเวลาทำงานและมาตรการทางวินัย (ประกาศเลขที่ ATT 6819)", url: "assets/policy-timerecord.jpg" },
+  { title: "อัตราเบี้ยเลี้ยงและค่าที่พัก (ระเบียบฉบับที่ 01/2567)", url: "assets/policy-allowance.png" },
+  { title: "วันและเวลาการเบิกอุปกรณ์สำนักงาน / แม่บ้าน / Safety", url: "assets/policy-equipment.png" },
+  { title: "จุดอันตรายที่ต้องรู้ (แผนก Asset Reliability)", url: "assets/policy-hazard-ar.png" },
+];
+const CULTURE_BRAND_VALUE_IMG = "assets/culture-brandvalue.png";
+const LOGO_URL = "assets/logo.png";
+const BUSINESS_LINES = [
+  ["Welding Solutions", "ศูนย์ซ่อมเครื่องเชื่อมและจัดจำหน่ายอุปกรณ์เชื่อมคุณภาพสูง รวมถึงวัสดุสิ้นเปลือง"],
+  ["Sugar Tek", "เชี่ยวชาญด้านการออกแบบโรงงานผลิตน้ำตาลและผลิตเครื่องจักร"],
+  ["Rubber Tek", "ให้บริการออกแบบโรงงานและจัดหาเครื่องจักรแบบครบวงจร"],
+  ["Waste Tek", "ให้บริการออกแบบและก่อสร้างโรงงานจัดการขยะมูลฝอย (MSW) รวมถึงจัดจำหน่ายผลิตภัณฑ์จากขยะเพื่อใช้เป็นเชื้อเพลิง"],
+];
+
+/* ============== HELPERS ============== */
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+function todayStr(){ const d=new Date(); return d.toISOString().slice(0,10); }
+function fmtDate(s){ if(!s) return "–"; try{ const d=new Date(s); return d.toLocaleDateString("th-TH",{year:"numeric",month:"short",day:"numeric"}); }catch(e){return s;} }
+function addDays(dateStr, days){ const d=new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
+function el(tag, attrs={}, children=[]){
+  const e=document.createElement(tag);
+  for(const k in attrs){
+    const v = attrs[k];
+    if(v===null || v===undefined || v===false) continue;
+    if(k==="class") e.className=v;
+    else if(k==="html") e.innerHTML=v;
+    else if(k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if(k==="checked" || k==="disabled" || k==="selected") e.setAttribute(k, k);
+    else e.setAttribute(k, v);
+  }
+  (Array.isArray(children)?children:[children]).forEach(c=>{
+    if(c==null) return;
+    if(typeof c==="string") e.appendChild(document.createTextNode(c));
+    else e.appendChild(c);
+  });
+  return e;
+}
+function toast(msg){
+  const t=document.getElementById("toast");
+  t.textContent=msg; t.classList.add("show");
+  clearTimeout(window.__toastT);
+  window.__toastT=setTimeout(()=>t.classList.remove("show"), 2200);
+}
+function makeItemsFromTemplate(tpl){
+  const out={};
+  Object.keys(tpl).forEach(k=>{
+    out[k]=tpl[k].items.map(label=>({ id: uid(), label, status: "pending", note: "", date: "" }));
+  });
+  return out;
+}
+function makeEmptyReflections(){
+  const out={};
+  REFLECT_ROUNDS.forEach(r=>{
+    out[r.key]={
+      employee: EMP_QUESTIONS.map(q=>({q, ans:"", note:""})),
+      buddy: BUDDY_QUESTIONS.map(q=>({q, ans:"", note:""})),
+      employeeOpen: "",
+      hrNotes: ""
+    };
+  });
+  return out;
+}
+function phaseProgress(items){
+  if(!items || !items.length) return 0;
+  const done = items.filter(i=>i.status==="done").length;
+  return Math.round(done/items.length*100);
+}
+function employeeOverallStatusLabel(emp){
+  if(emp.status==="terminated") return {label:"ออกจากงานแล้ว", cls:"badge-terminated"};
+  if(emp.status==="offboarding") return {label:"กำลัง Offboard", cls:"badge-offboarding"};
+  const phases=["phase1","phase2","phase3","phase4"];
+  const allItems = phases.flatMap(p=> (emp.onboarding && emp.onboarding[p]) || []);
+  const prog = phaseProgress(allItems);
+  if(prog>=100) return {label:"Onboarding เสร็จสมบูรณ์", cls:"badge-active"};
+  return {label:"กำลัง Onboard", cls:"badge-onboarding"};
+}
+
+/* ============== STATE ============== */
+const state = {
+  role: "hr",
+  employees: {},         // id -> doc data
+  selectedId: null,
+  view: "dashboard", // dashboard | employee | policies
+  activeTab: "info",
+  loading: true,
+  dbReady: false,     // true once the Apps Script API has answered at least once
+  apiConfigured: false,
+  apiError: "",
+};
+
+/* ============== DATA LAYER (Google Sheets via Apps Script Web App) ==============
+   Storage model: the whole app reads/writes one "employees" list through a
+   Google Apps Script Web App that you deploy yourself (see README.md).
+   The script keeps the data in a Google Sheet in your own Google Drive.
+   This page has no server of its own — it just calls that URL with fetch(),
+   and polls every POLL_MS to approximate realtime (Apps Script / Sheets
+   have no push-realtime channel like Firestore does). */
+const API_URL_KEY = "HROD_API_URL";
+const POLL_MS = 4000;
+let pollTimer = null;
+
+function getApiUrl(){ return (localStorage.getItem(API_URL_KEY) || "").trim(); }
+function setApiUrl(url){ localStorage.setItem(API_URL_KEY, url.trim()); }
+
+async function apiList(){
+  const url = getApiUrl();
+  if(!url) throw new Error("no-api-url");
+  const res = await fetch(url + (url.includes("?")?"&":"?") + "action=list", { method:"GET" });
+  if(!res.ok) throw new Error("http " + res.status);
+  const body = await res.json();
+  if(!body.ok) throw new Error(body.error || "api error");
+  return body.employees || []; // [{id, data, updatedAt}]
+}
+
+async function apiSet(id, data){
+  const url = getApiUrl();
+  if(!url) throw new Error("no-api-url");
+  // text/plain avoids a CORS preflight that Apps Script web apps can't answer;
+  // the script still parses the body as JSON (see apps-script/Code.gs).
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "set", id, data })
+  });
+  const body = await res.json();
+  if(!body.ok) throw new Error(body.error || "api error");
+}
+
+async function apiDelete(id){
+  const url = getApiUrl();
+  if(!url) throw new Error("no-api-url");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "delete", id })
+  });
+  const body = await res.json();
+  if(!body.ok) throw new Error(body.error || "api error");
+}
+
+/* ============== POLLING ============== */
+function startPolling(){
+  state.apiConfigured = !!getApiUrl();
+  if(!state.apiConfigured){
+    state.loading = false;
+    render();
+    return;
+  }
+  refreshEmployees();
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(refreshEmployees, POLL_MS);
+}
+
+async function refreshEmployees(){
+  try{
+    const list = await apiList();
+    state.employees = {};
+    list.forEach(row=>{ state.employees[row.id] = row.data; });
+    if(!state.selectedId){
+      const ids = Object.keys(state.employees);
+      if(ids.length) state.selectedId = ids[0];
+    }
+    state.loading = false;
+    state.dbReady = true;
+    state.apiError = "";
+    render();
+  }catch(e){
+    state.loading = false;
+    state.dbReady = false;
+    state.apiError = String(e.message || e);
+    console.error("refreshEmployees failed", e);
+    render();
+  }
+}
+
+async function saveEmployee(id, patch){
+  const merged = {...(state.employees[id]||{}), ...patch};
+  state.employees[id] = merged; // optimistic local update
+  render();
+  try{
+    await apiSet(id, merged);
+  }catch(e){
+    toast("บันทึกไม่สำเร็จ: " + (e.message||e));
+    console.error(e);
+  }
+}
+
+async function createEmployee(info){
+  const id = uid();
+  const doc = {
+    ...info,
+    status: "onboarding",
+    createdAt: Date.now(),
+    onboarding: makeItemsFromTemplate(ONB_TEMPLATE),
+    reflections: makeEmptyReflections(),
+    offboarding: { started:false, items: makeItemsFromTemplate(OFF_TEMPLATE), lastWorkDate:"", reason:"", exitSummary:"" }
+  };
+  state.employees[id] = doc;
+  state.selectedId = id;
+  state.activeTab = "info";
+  try{
+    await apiSet(id, doc);
+    toast("เพิ่มพนักงานใหม่แล้ว");
+  }catch(e){
+    toast("เพิ่มพนักงานไม่สำเร็จ: " + (e.message||e));
+    console.error(e);
+  }
+}
+
+async function deleteEmployee(id){
+  delete state.employees[id];
+  if(state.selectedId===id) state.selectedId=null;
+  render();
+  try{
+    await apiDelete(id);
+    toast("ลบข้อมูลแล้ว");
+  }catch(e){ toast("ลบไม่สำเร็จ: " + (e.message||e)); }
+}
+
+/* ============== RENDER ROOT ============== */
+function render(){
+  const root = document.getElementById("root");
+  root.innerHTML = "";
+  root.appendChild(renderSidebar());
+  root.appendChild(renderMain());
+}
+
+/* ---------- SIDEBAR ---------- */
+function renderSidebar(){
+  const emps = Object.entries(state.employees).map(([id,d])=>({id,...d}));
+  emps.sort((a,b)=> (a.name||"").localeCompare(b.name||"", "th"));
+  const search = state.searchTerm || "";
+  const filtered = emps.filter(e => !search || (e.name||"").toLowerCase().includes(search.toLowerCase()) || (e.position||"").toLowerCase().includes(search.toLowerCase()));
+
+  const list = el("div",{class:"emp-list"}, filtered.length ? filtered.map(e=>{
+    const st = employeeOverallStatusLabel(e);
+    return el("div",{
+      class:"emp-item"+(e.id===state.selectedId && state.view==="employee"?" active":""),
+      onclick:()=>{ state.selectedId=e.id; state.activeTab="info"; state.view="employee"; render(); }
+    },[
+      el("div",{class:"emp-name"}, e.name || "(ไม่มีชื่อ)"),
+      el("div",{class:"emp-meta"}, `${e.position||"-"} · ${e.department||"-"}`),
+      el("div",{class:"badge "+st.cls}, st.label)
+    ]);
+  }) : [el("div",{class:"emp-meta",style:"padding:16px 6px;"}, state.loading? "กำลังโหลด..." : "ยังไม่มีพนักงานในระบบ")]);
+
+  const sidebar = el("div",{class:"sidebar"},[
+    el("div",{class:"sidebar-head"},[
+      el("div",{class:"brand"},[
+        el("img",{src:LOGO_URL, alt:"ALLIED-TEK"}),
+        el("div",{class:"brand-text"},["HROD", el("small",{},"Onboarding & Offboarding")])
+      ])
+    ]),
+    el("div",{class:"role-box"},[
+      el("label",{},"มุมมองการใช้งาน (Role)"),
+      el("select",{onchange:(e)=>{ state.role=e.target.value; render(); }},
+        Object.entries(ROLE_LABEL).map(([v,l])=> el("option",{value:v, selected: v===state.role? "selected": null}, l))
+      )
+    ]),
+    el("div",{class:"nav-link"+(state.view==="policies"?" active":""), onclick:()=>{ state.view="policies"; render(); }}, "📋 นโยบาย & สวัสดิการบริษัท"),
+    el("div",{class:"emp-search"},[
+      el("input",{placeholder:"ค้นหาพนักงาน...", value:search, oninput:(e)=>{ state.searchTerm=e.target.value; render(); }})
+    ]),
+    list,
+    el("div",{class:"sidebar-foot"},[
+      el("button",{class:"btn btn-primary btn-block", onclick: openAddEmployeeModal}, "+ เพิ่มพนักงานใหม่"),
+      el("button",{class:"btn btn-block", style:"margin-top:8px;", onclick: openSettingsModal},
+        "⚙️ ตั้งค่าฐานข้อมูล " + (state.apiConfigured ? (state.dbReady? "✅" : "⚠️") : "❗"))
+    ])
+  ]);
+  return sidebar;
+}
+
+/* ---------- MAIN ---------- */
+function renderMain(){
+  const main = el("div",{class:"main"});
+  main.appendChild(renderTopbar());
+  const content = el("div",{class:"content"});
+  if(state.view==="policies"){
+    content.appendChild(renderPoliciesView());
+  } else if(!state.selectedId || !state.employees[state.selectedId]){
+    content.appendChild(renderDashboard());
+  } else {
+    content.appendChild(renderEmployeeDetail(state.employees[state.selectedId], state.selectedId));
+  }
+  main.appendChild(content);
+  return main;
+}
+
+function renderTopbar(){
+  const emp = (state.view==="employee" && state.selectedId) ? state.employees[state.selectedId] : null;
+  const isPolicies = state.view==="policies";
+  return el("div",{class:"topbar"},[
+    el("div",{},[
+      el("h1",{}, isPolicies? "นโยบาย & สวัสดิการบริษัท" : (emp ? emp.name : "ภาพรวมระบบ HROD")),
+      el("div",{class:"sub"}, isPolicies ? "ระเบียบข้อบังคับในการทำงาน สวัสดิการ และวัฒนธรรมองค์กร ALLIED-TEK" : (emp ? `${emp.position||"-"} · ${emp.department||"-"} · เริ่มงาน ${fmtDate(emp.startDate)}` : "ระบบดูแลพนักงานใหม่ตั้งแต่วันแรกจนครบทดลองงาน และกระบวนการเมื่อพนักงานออกจากงาน"))
+    ]),
+    el("div",{style:"display:flex;gap:8px;align-items:center;"},[
+      el("span",{class:"pill"}, "มุมมอง: " + ROLE_LABEL[state.role]),
+      emp ? renderTopbarActions(emp) : null
+    ])
+  ]);
+}
+
+function renderPoliciesView(){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"section-title"},"ALLIED-TEK · วิสัยทัศน์และพันธกิจ"));
+  wrap.appendChild(el("div",{class:"card"},[
+    el("div",{style:"font-size:13px;line-height:1.7;"},[
+      el("div",{style:"margin-bottom:8px;"},[el("b",{},"วิสัยทัศน์: "),"องค์กรที่มุ่งมั่นสร้างสรรค์นวัตกรรมวิศวกรรมการผลิต ด้วยบริการอันเป็นเลิศ เพื่อการเติบโตที่ยั่งยืนของทุกชีวิต ก้าวไปด้วยกัน"]),
+      el("div",{},[el("b",{},"พันธกิจ: "),"พลิกโฉมโลกวิศวกรรมการผลิตที่แตกต่าง ล้ำหน้าด้วยการพัฒนาประสิทธิภาพ บริการที่เหนือความคาดหวัง และทำให้คุณภาพทุกชีวิตดีขึ้นกว่าเดิมเสมอ"]),
+    ])
+  ]));
+  wrap.appendChild(el("div",{class:"section-title"},"ธุรกิจของเรา"));
+  wrap.appendChild(el("div",{class:"biz-grid"}, BUSINESS_LINES.map(([name,desc])=> el("div",{class:"biz-card"},[ el("b",{},name), el("span",{},desc) ]))));
+  wrap.appendChild(el("div",{class:"section-title"},"วัฒนธรรมองค์กร · Core Value 5 ข้อ (Brand Value)"));
+  wrap.appendChild(el("div",{class:"policy-card"},[ el("img",{src:CULTURE_BRAND_VALUE_IMG, alt:"Brand Value"}) ]));
+  wrap.appendChild(el("div",{class:"section-title"},"ระเบียบข้อบังคับในการทำงานและสวัสดิการพนักงาน"));
+  POLICY_SECTIONS.forEach(p=>{
+    wrap.appendChild(el("div",{class:"policy-card"},[ el("h3",{},p.title), el("img",{src:p.url, alt:p.title, loading:"lazy"}) ]));
+  });
+  return wrap;
+}
+
+function renderTopbarActions(emp){
+  const wrap = el("div",{style:"display:flex;gap:8px;"});
+  if(state.role==="hr"){
+    if(emp.status!=="offboarding" && emp.status!=="terminated"){
+      wrap.appendChild(el("button",{class:"btn btn-danger", onclick:()=>openOffboardModal(state.selectedId)}, "เริ่ม Offboarding"));
+    }
+    if(emp.status==="offboarding"){
+      wrap.appendChild(el("button",{class:"btn", onclick:()=>{ saveEmployee(state.selectedId,{status:"terminated"}); toast("ปิดสถานะพนักงานเรียบร้อย"); } }, "ปิดสถานะ (Terminated)"));
+    }
+    wrap.appendChild(el("button",{class:"btn btn-danger", onclick:()=>{ if(confirm("ยืนยันลบข้อมูลพนักงานนี้ทั้งหมด?")) deleteEmployee(state.selectedId); } }, "ลบ"));
+  }
+  return wrap;
+}
+
+function renderDashboard(){
+  const emps = Object.values(state.employees);
+  const counts = { onboarding:0, active:0, offboarding:0, terminated:0 };
+  emps.forEach(e=>{
+    const st = employeeOverallStatusLabel(e);
+    if(e.status==="offboarding") counts.offboarding++;
+    else if(e.status==="terminated") counts.terminated++;
+    else if(st.label.includes("เสร็จ")) counts.active++;
+    else counts.onboarding++;
+  });
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"dash-grid"},[
+    statCard(emps.length, "พนักงานทั้งหมดในระบบ"),
+    statCard(counts.onboarding, "กำลัง Onboard"),
+    statCard(counts.active, "ผ่านทดลองงานแล้ว"),
+    statCard(counts.offboarding, "กำลัง Offboard"),
+    statCard(counts.terminated, "ออกจากงานแล้ว"),
+  ]));
+  if(!state.apiConfigured){
+    wrap.appendChild(el("div",{class:"lock-note"}, "ยังไม่ได้ตั้งค่า Apps Script API URL — กด \"⚙️ ตั้งค่าฐานข้อมูล\" ที่แถบด้านซ้ายก่อน ไม่งั้นข้อมูลจะไม่ถูกบันทึกถาวร (ดูขั้นตอนใน README.md)"));
+  } else if(!state.dbReady){
+    wrap.appendChild(el("div",{class:"lock-note"}, "เชื่อมต่อฐานข้อมูลไม่สำเร็จ: " + (state.apiError||"ไม่ทราบสาเหตุ") + " — ตรวจสอบว่า deploy Apps Script เป็น \"Anyone\" แล้ว และ URL ถูกต้อง"));
+  }
+  if(!emps.length && !state.loading){
+    wrap.appendChild(el("div",{class:"empty-state"},[
+      el("div",{class:"big"}, "👋"),
+      el("div",{}, "ยังไม่มีพนักงานในระบบ กด \"+ เพิ่มพนักงานใหม่\" ที่แถบด้านซ้ายเพื่อเริ่มต้น")
+    ]));
+  } else if(emps.length){
+    wrap.appendChild(el("div",{class:"section-title"}, "เลือกพนักงานทางด้านซ้ายเพื่อดูรายละเอียด"));
+  }
+  return wrap;
+}
+function statCard(num, label){
+  return el("div",{class:"card"},[ el("div",{class:"stat-num"}, String(num)), el("div",{class:"stat-label"}, label) ]);
+}
+
+/* ---------- EMPLOYEE DETAIL ---------- */
+function renderEmployeeDetail(emp, id){
+  const wrap = el("div",{});
+  const tabs = [
+    {key:"info", label:"ข้อมูลพนักงาน"},
+    {key:"passport", label:"📘 สมุดพก (Passport)"},
+    {key:"onboarding", label:"Onboarding Checklist"},
+    {key:"reflect", label:"แบบสะท้อน 2/3 ทาง"},
+    {key:"kpi", label:"ตัวชี้วัดงาน (KPI ทดลองงาน)"},
+  ];
+  if(emp.status==="offboarding" || emp.status==="terminated" || (emp.offboarding&&emp.offboarding.started)){
+    tabs.push({key:"offboarding", label:"Offboarding Checklist"});
+  }
+  const tabBar = el("div",{class:"tabs"}, tabs.map(t=> el("div",{
+    class:"tab"+(state.activeTab===t.key?" active":""),
+    onclick:()=>{ state.activeTab=t.key; render(); }
+  }, t.label)));
+  wrap.appendChild(tabBar);
+
+  if(state.activeTab==="info") wrap.appendChild(renderInfoTab(emp, id));
+  else if(state.activeTab==="passport") wrap.appendChild(renderPassportTab(emp, id));
+  else if(state.activeTab==="onboarding") wrap.appendChild(renderOnboardingTab(emp, id));
+  else if(state.activeTab==="reflect") wrap.appendChild(renderReflectTab(emp, id));
+  else if(state.activeTab==="offboarding") wrap.appendChild(renderOffboardingTab(emp, id));
+  else if(state.activeTab==="kpi") wrap.appendChild(renderKpiTab(emp, id));
+  return wrap;
+}
+
+function ppRow(label,val){ return el("tr",{},[el("td",{class:"pp-label"},label), el("td",{},val)]); }
+function ppConnRow(who,name,phone){ return el("tr",{},[el("td",{},who), el("td",{},name||"-"), el("td",{},phone||"-")]); }
+
+function renderPassportTab(emp, id){
+  const onb = emp.onboarding || {};
+  const phaseDone = (pk)=>{ const items=onb[pk]||[]; return items.length>0 && items.every(i=>i.status==="done"); };
+  const phaseKeys = [["phase1","เฟส 1 · ก่อนเริ่มงาน"],["phase2","เฟส 2 · Day 1–7"],["phase3","เฟส 3 · 30–90 วัน"],["phase4","เฟส 4 · 90–120 วัน"]];
+  const wrap = el("div",{});
+  wrap.appendChild(el("button",{class:"btn pp-print-btn", onclick:()=>window.print()}, "🖨️ พิมพ์ / บันทึกเป็น PDF"));
+  const passport = el("div",{class:"passport-wrap"},[
+    el("div",{class:"passport-header"},[
+      el("div",{class:"pp-brand"},[
+        el("img",{src:LOGO_URL, alt:"ALLIED-TEK"}),
+        el("div",{},["ALLIED-TEK", el("small",{}, "People & Organization Management · ทีม Onboarding / P&OD")])
+      ]),
+      el("div",{class:"pp-title"}, "สมุดพกพนักงานใหม่"),
+      el("div",{class:"pp-sub"}, "New Hire Passport · 119 วันแรกของฉัน")
+    ]),
+    el("div",{class:"passport-body"},[
+      el("table",{class:"pp-table"},[
+        ppRow("ชื่อ-นามสกุล", `${emp.name||"-"}${emp.nickname? " ("+emp.nickname+")":""}`),
+        ppRow("ตำแหน่ง", emp.position||"-"),
+        ppRow("แผนก / ทีม", emp.department||"-"),
+        ppRow("วันเริ่มงาน", fmtDate(emp.startDate)),
+        ppRow("วันครบ 90-119 วัน", emp.startDate? fmtDate(addDays(emp.startDate,105)) : "-"),
+        ppRow("รหัสพนักงาน", emp.code||"-"),
+      ]),
+      el("div",{class:"pp-section-h"}, "Connection — คนที่พึ่งได้ (ติดอะไร ถามใคร)"),
+      el("table",{class:"pp-conn-table"},[
+        el("tr",{},[el("th",{},"ใคร"),el("th",{},"ชื่อ · ตำแหน่ง"),el("th",{},"โทร / LINE")]),
+        ppConnRow("หัวหน้าโดยตรง", emp.manager, emp.managerPhone),
+        ppConnRow("พี่เลี้ยง (Buddy)", emp.buddy, emp.buddyPhone),
+        ppConnRow("HR ผู้ดูแล", emp.hrOfficer, emp.hrPhone),
+      ]),
+      el("div",{class:"pp-section-h"}, "ความคืบหน้า Onboarding"),
+      el("div",{class:"pp-stamps"}, phaseKeys.map(([pk,label])=>{
+        const done = phaseDone(pk);
+        return el("div",{class:"pp-stamp"+(done?" done":"")},[ el("span",{class:"pp-stamp-icon"}, done? "✅":"⏳"), label ]);
+      })),
+      el("div",{class:"pp-section-h"}, "ลงชื่อรับทราบ"),
+      el("div",{class:"pp-sign-grid"},[
+        el("div",{class:"pp-sign-box"},"พนักงาน / วันที่"),
+        el("div",{class:"pp-sign-box"},"พี่เลี้ยง / วันที่"),
+        el("div",{class:"pp-sign-box"},"หัวหน้างาน / วันที่"),
+        el("div",{class:"pp-sign-box"},"HR / วันที่"),
+      ])
+    ])
+  ]);
+  wrap.appendChild(passport);
+  return wrap;
+}
+
+const KPI_ROWS = [
+  ["1. ทักษะทางเทคนิคและการปฏิบัติงานจริง", "100%", "ใบตรวจรับงาน / รายการติดตั้งหน้างาน (Checklist), การสุ่มตรวจความเรียบร้อยและความปลอดภัยหน้างาน, สภาพความพร้อมใช้งานของเครื่องมือช่าง"],
+  ["2. ความรู้และการวิเคราะห์แก้ปัญหาหน้างาน", "> 70%", "รายงานการแก้ไขปัญหา/อาการเสีย, แบบทดสอบความรู้หรือการให้ทดลองหน้างาน"],
+  ["3. การวางแผนและการควบคุมงาน", "ภายในวันสุดท้ายของทุกสัปดาห์", "แผนการทำงานส่วนบุคคล, อัตราการส่งมอบงานตรงเวลา, รายงานสรุปผลการทำงานประจำสัปดาห์/เดือน"],
+  ["4. การสื่อสาร การรายงาน และการทำงานร่วมกัน", "ภายในวันสุดท้ายของทุกสัปดาห์", "ข้อความรายงานงานในกลุ่มสื่อสาร (LINE Group, Email, Daily Report), บันทึกการประชุมประจำวัน/สัปดาห์"],
+];
+function renderKpiTab(emp, id){
+  const canEdit = state.role==="hr" || state.role==="manager";
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "งานนี้วัดว่าดีหรือไม่ดียังไง (ถาม-ตอบได้วันที่ 30 และ 75–90) — หัวหน้างานเป็นผู้กำหนด ตัวชี้วัดนี้อ้างอิงตามตำแหน่งงานปัจจุบัน ปรับแก้ได้ตามตำแหน่งของพนักงานแต่ละคน"));
+  wrap.appendChild(el("table",{class:"kpi-table"},[
+    el("tr",{},[el("th",{},"ตัววัด"),el("th",{},"เป้าช่วงทดลองงาน"),el("th",{},"ดูจากที่ไหน")]),
+    ...KPI_ROWS.map(r=> el("tr",{}, r.map(c=> el("td",{}, c))))
+  ]));
+  wrap.appendChild(el("div",{class:"card",style:"margin-top:16px;"},[
+    el("div",{class:"field"},[
+      el("label",{},"หมายเหตุ / ปรับตัวชี้วัดสำหรับตำแหน่งนี้"),
+      el("textarea",{class:"free-text", value: emp.kpiNotes||"", disabled: canEdit?null:"disabled",
+        onchange:(e)=> saveEmployee(id,{kpiNotes:e.target.value}) })
+    ])
+  ]));
+  wrap.appendChild(el("div",{class:"lock-note", style:"margin-top:14px;"}, "เมื่อถูกถามว่า \"งานนี้ทำอยู่วัดยังไง\" ตอบจากตารางนี้ได้ 2 ข้อขึ้นไป = เข้าใจงานตัวเองแล้ว = OK"));
+  return wrap;
+}
+
+function renderInfoTab(emp, id){
+  const editable = state.role==="hr";
+  const field = (label, key, type="text") => {
+    const input = el("input",{
+      type,
+      value: emp[key]||"",
+      disabled: editable? null : "disabled",
+      onchange: (e)=> saveEmployee(id, {[key]: e.target.value})
+    });
+    return el("div",{class:"field"},[ el("label",{}, label), input ]);
+  };
+  const probationNote = emp.startDate ? `ครบ 90–119 วัน ประมาณ ${fmtDate(addDays(emp.startDate,105))}` : "";
+  const card = el("div",{class:"card"},[
+    el("div",{class:"field-grid"},[
+      field("ชื่อ-นามสกุล","name"),
+      field("ชื่อเล่น","nickname"),
+      field("รหัสพนักงาน","code"),
+      field("ตำแหน่ง","position"),
+      field("แผนก / ทีม","department"),
+      field("วันเริ่มงาน","startDate","date"),
+    ])
+  ]);
+  if(probationNote) card.appendChild(el("div",{class:"lock-note", style:"margin-top:12px;"}, probationNote));
+
+  const connCard = el("div",{class:"card",style:"margin-top:16px;"},[
+    el("div",{class:"section-title",style:"margin-top:0;"}, "คนที่พึ่งได้ (Connection)"),
+    el("div",{class:"field-grid"},[
+      field("หัวหน้างานโดยตรง","manager"),
+      field("เบอร์ / LINE หัวหน้า","managerPhone"),
+      field("พี่เลี้ยง (Buddy)","buddy"),
+      field("เบอร์ / LINE พี่เลี้ยง","buddyPhone"),
+      field("HR ผู้ดูแล","hrOfficer"),
+      field("เบอร์ / LINE HR","hrPhone"),
+    ])
+  ]);
+  const wrap = el("div",{});
+  wrap.appendChild(card);
+  wrap.appendChild(connCard);
+  if(!editable) wrap.appendChild(el("div",{class:"lock-note", style:"margin-top:12px;"}, "มุมมองนี้ดูข้อมูลได้อย่างเดียว — ให้ HR เป็นผู้แก้ไขข้อมูลพนักงาน"));
+  return wrap;
+}
+
+function renderChecklistPhase(phaseKey, phaseDef, items, onChange, canEdit){
+  const prog = phaseProgress(items);
+  const head = el("div",{class:"phase-head"},[
+    el("div",{},[
+      el("div",{class:"ph-title"}, phaseDef.title),
+      el("div",{class:"ph-sub"}, `${items.filter(i=>i.status==="done").length}/${items.length} เสร็จแล้ว`)
+    ]),
+    el("div",{class:"progress-bar"}, el("div",{class:"progress-fill", style:`width:${prog}%`}))
+  ]);
+  const rows = items.map((it, idx)=> el("div",{class:"item-row"},[
+    el("label",{class:"chk"}, el("input",{
+      type:"checkbox", checked: it.status==="done"? "checked": null,
+      disabled: canEdit? null : "disabled",
+      onchange:(e)=>{ items[idx]={...it, status: e.target.checked?"done":"pending", date: e.target.checked? todayStr(): ""}; onChange([...items]); }
+    })),
+    el("div",{class:"item-label"}, it.label),
+    el("input",{class:"item-note", placeholder:"บันทึกปัญหา / รายละเอียดเพิ่มเติม", value: it.note||"",
+      disabled: canEdit? null: "disabled",
+      onchange:(e)=>{ items[idx]={...it, note:e.target.value}; onChange([...items]); } }),
+    el("input",{class:"item-date", type:"date", value: it.date||"",
+      disabled: canEdit? null: "disabled",
+      onchange:(e)=>{ items[idx]={...it, date:e.target.value}; onChange([...items]); } }),
+    canEdit ? el("button",{class:"del-btn", title:"ลบรายการนี้", onclick:()=>{ items.splice(idx,1); onChange([...items]); } }, "✕") : el("span",{})
+  ]));
+  const card = el("div",{class:"phase-card"},[head, ...rows]);
+  if(canEdit){
+    let newLabel="";
+    const addInput = el("input",{placeholder:"เพิ่มขั้นตอน/กิจกรรมเอง...", oninput:(e)=>newLabel=e.target.value});
+    card.appendChild(el("div",{class:"add-item-row"},[
+      addInput,
+      el("button",{class:"btn", onclick:()=>{
+        if(!newLabel.trim()) return;
+        items.push({id:uid(), label:newLabel.trim(), status:"pending", note:"", date:""});
+        onChange([...items]);
+        addInput.value=""; newLabel="";
+      }}, "เพิ่ม")
+    ]));
+  }
+  return card;
+}
+
+function renderOnboardingTab(emp, id){
+  const canEdit = state.role==="hr" || state.role==="manager";
+  const wrap = el("div",{});
+  if(!canEdit) wrap.appendChild(el("div",{class:"lock-note"}, "มุมมองพนักงานใหม่: ดูสถานะ checklist ได้ แต่การติ๊กสำเร็จให้หัวหน้างาน/พี่เลี้ยง หรือ HR เป็นผู้บันทึก"));
+  const onb = emp.onboarding || makeItemsFromTemplate(ONB_TEMPLATE);
+  Object.keys(ONB_TEMPLATE).forEach(pk=>{
+    const items = onb[pk] || [];
+    wrap.appendChild(renderChecklistPhase(pk, ONB_TEMPLATE[pk], items, (newItems)=>{
+      const next = {...onb, [pk]: newItems};
+      saveEmployee(id, {onboarding: next});
+    }, canEdit));
+  });
+  return wrap;
+}
+
+function renderOffboardingTab(emp, id){
+  const canEdit = state.role==="hr";
+  const off = emp.offboarding || { items: makeItemsFromTemplate(OFF_TEMPLATE), lastWorkDate:"", reason:"", exitSummary:"" };
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"card"},[
+    el("div",{class:"field-grid"},[
+      (()=>{ const input=el("input",{type:"date", value: off.lastWorkDate||"", disabled: canEdit?null:"disabled",
+        onchange:(e)=> saveEmployee(id,{offboarding:{...off,lastWorkDate:e.target.value}}) });
+        return el("div",{class:"field"},[el("label",{},"วันทำงานวันสุดท้าย"), input]); })(),
+      (()=>{ const input=el("input",{value: off.reason||"", disabled: canEdit?null:"disabled",
+        onchange:(e)=> saveEmployee(id,{offboarding:{...off,reason:e.target.value}}) });
+        return el("div",{class:"field"},[el("label",{},"เหตุผลการออก"), input]); })(),
+    ])
+  ]));
+  if(!canEdit) wrap.appendChild(el("div",{class:"lock-note", style:"margin-top:12px;"}, "มุมมองนี้ดูข้อมูลได้อย่างเดียว"));
+  Object.keys(OFF_TEMPLATE).forEach(ck=>{
+    const items = off.items?.[ck] || [];
+    wrap.appendChild(renderChecklistPhase(ck, OFF_TEMPLATE[ck], items, (newItems)=>{
+      const next = {...off, items: {...off.items, [ck]: newItems}};
+      saveEmployee(id, {offboarding: next});
+    }, canEdit));
+  });
+  wrap.appendChild(el("div",{class:"card",style:"margin-top:6px;"},[
+    el("div",{class:"field"},[
+      el("label",{},"สรุปผล Exit Interview / ข้อเสนอแนะ"),
+      el("textarea",{class:"free-text", value: off.exitSummary||"", disabled: canEdit?null:"disabled",
+        onchange:(e)=> saveEmployee(id,{offboarding:{...off, exitSummary:e.target.value}}) })
+    ])
+  ]));
+  return wrap;
+}
+
+function ansButton(cls, label, selected, onClick){
+  return el("button",{class:"seg "+cls+(selected?" on":""), onclick:onClick}, label);
+}
+
+function renderReflectRound(round, data, onChange, canEditEmployee, canEditBuddy, canEditHR){
+  const card = el("div",{class:"reflect-round"});
+  card.appendChild(el("div",{class:"reflect-head"},[ el("h3",{}, round.title) ]));
+
+  // Employee section
+  const empBlock = el("div",{class:"resp-block"},[ el("div",{class:"resp-title"},"ส่วน ก · พนักงานใหม่ตอบ") ]);
+  data.employee.forEach((row, idx)=>{
+    const seg = el("div",{class:"seg"},[
+      ansButtonWrap("yes","ใช่",row.ans==="yes", ()=>{ if(!canEditEmployee)return; data.employee[idx]={...row, ans:"yes"}; onChange(); }),
+      ansButtonWrap("part","บางส่วน",row.ans==="part", ()=>{ if(!canEditEmployee)return; data.employee[idx]={...row, ans:"part"}; onChange(); }),
+      ansButtonWrap("no","ไม่ใช่",row.ans==="no", ()=>{ if(!canEditEmployee)return; data.employee[idx]={...row, ans:"no"}; onChange(); }),
+    ]);
+    empBlock.appendChild(el("div",{class:"q-row"},[
+      el("div",{class:"q-text"}, row.q),
+      el("div",{class:"q-ans"},[ seg, el("input",{class:"note-mini", placeholder:"ขยายความ (ถ้ามี)", value:row.note||"", disabled: canEditEmployee?null:"disabled",
+        onchange:(e)=>{ data.employee[idx]={...row, note:e.target.value}; onChange(); } }) ])
+    ]));
+  });
+  empBlock.appendChild(el("div",{style:"margin-top:10px;"},[
+    el("label",{style:"font-size:12px;color:var(--sub);font-weight:600;display:block;margin-bottom:4px;"}, round.openQ),
+    el("textarea",{class:"free-text", value:data.employeeOpen||"", disabled: canEditEmployee?null:"disabled",
+      onchange:(e)=>{ data.employeeOpen=e.target.value; onChange(); } })
+  ]));
+  card.appendChild(empBlock);
+
+  // Buddy section
+  const buddyBlock = el("div",{class:"resp-block"},[ el("div",{class:"resp-title"},"ส่วน ข · พี่เลี้ยงตอบ") ]);
+  data.buddy.forEach((row, idx)=>{
+    const seg = el("div",{class:"seg"},[
+      ansButtonWrap("yes","ใช่",row.ans==="yes", ()=>{ if(!canEditBuddy)return; data.buddy[idx]={...row, ans:"yes"}; onChange(); }),
+      ansButtonWrap("part","บางส่วน",row.ans==="part", ()=>{ if(!canEditBuddy)return; data.buddy[idx]={...row, ans:"part"}; onChange(); }),
+      ansButtonWrap("no","ไม่ใช่",row.ans==="no", ()=>{ if(!canEditBuddy)return; data.buddy[idx]={...row, ans:"no"}; onChange(); }),
+    ]);
+    buddyBlock.appendChild(el("div",{class:"q-row"},[
+      el("div",{class:"q-text"}, row.q),
+      el("div",{class:"q-ans"},[ seg, el("input",{class:"note-mini", placeholder:"ขยายความ (ถ้ามี)", value:row.note||"", disabled: canEditBuddy?null:"disabled",
+        onchange:(e)=>{ data.buddy[idx]={...row, note:e.target.value}; onChange(); } }) ])
+    ]));
+  });
+  card.appendChild(buddyBlock);
+
+  // HR section
+  const hrBlock = el("div",{class:"resp-block"},[
+    el("div",{class:"resp-title"},"ส่วน ค · HR บันทึก"),
+    el("textarea",{class:"free-text", placeholder:"ข้อเสนอแนะ / แนวทางการแก้ไขปัญหาที่เกิดขึ้น", value:data.hrNotes||"", disabled: canEditHR?null:"disabled",
+      onchange:(e)=>{ data.hrNotes=e.target.value; onChange(); } })
+  ]);
+  card.appendChild(hrBlock);
+
+  return card;
+}
+function ansButtonWrap(kind, label, on, onClick){
+  const cls = kind==="yes"?"sel-yes":kind==="part"?"sel-part":"sel-no";
+  return el("button",{class:cls+(on?" on":""), onclick:onClick}, label);
+}
+
+function renderReflectTab(emp, id){
+  const wrap = el("div",{});
+  const refl = emp.reflections || makeEmptyReflections();
+  const canEditEmployee = state.role==="employee";
+  const canEditBuddy = state.role==="manager";
+  const canEditHR = state.role==="hr";
+  if(!canEditEmployee && !canEditBuddy && !canEditHR){} // no-op
+  REFLECT_ROUNDS.forEach(round=>{
+    const data = refl[round.key] || { employee: EMP_QUESTIONS.map(q=>({q,ans:"",note:""})), buddy: BUDDY_QUESTIONS.map(q=>({q,ans:"",note:""})), employeeOpen:"", hrNotes:"" };
+    const onChange = ()=>{ const next={...refl,[round.key]:data}; saveEmployee(id,{reflections:next}); };
+    wrap.appendChild(renderReflectRound(round, data, onChange, canEditEmployee, canEditBuddy, canEditHR));
+  });
+  return wrap;
+}
+
+/* ============== MODALS ============== */
+function closeModal(){
+  const b = document.querySelector(".modal-backdrop");
+  if(b) b.remove();
+}
+function openModal(contentEl){
+  closeModal();
+  const backdrop = el("div",{class:"modal-backdrop", onclick:(e)=>{ if(e.target.classList.contains("modal-backdrop")) closeModal(); }});
+  backdrop.appendChild(el("div",{class:"modal"}, contentEl));
+  document.body.appendChild(backdrop);
+}
+
+function openAddEmployeeModal(){
+  const form = {};
+  const field = (label, key, type="text") => {
+    const input = el("input",{type, oninput:(e)=> form[key]=e.target.value});
+    return el("div",{class:"field"},[el("label",{},label), input]);
+  };
+  const body = el("div",{},[
+    el("h2",{},"เพิ่มพนักงานใหม่"),
+    el("div",{class:"sub"},"กรอกข้อมูลเบื้องต้น ระบบจะสร้าง Onboarding Checklist ให้อัตโนมัติ"),
+    el("div",{class:"field-grid"},[
+      field("ชื่อ-นามสกุล","name"),
+      field("ชื่อเล่น","nickname"),
+      field("รหัสพนักงาน","code"),
+      field("ตำแหน่ง","position"),
+      field("แผนก / ทีม","department"),
+      field("วันเริ่มงาน","startDate","date"),
+      field("หัวหน้างานโดยตรง","manager"),
+      field("เบอร์/LINE หัวหน้า","managerPhone"),
+      field("พี่เลี้ยง (Buddy)","buddy"),
+      field("เบอร์/LINE พี่เลี้ยง","buddyPhone"),
+      field("HR ผู้ดูแล","hrOfficer"),
+      field("เบอร์/LINE HR","hrPhone"),
+    ]),
+    el("div",{class:"modal-foot"},[
+      el("button",{class:"btn", onclick: closeModal}, "ยกเลิก"),
+      el("button",{class:"btn btn-primary", onclick: async ()=>{
+        if(!form.name){ toast("กรุณากรอกชื่อพนักงาน"); return; }
+        await createEmployee(form);
+        closeModal();
+        render();
+      }}, "บันทึก")
+    ])
+  ]);
+  openModal(body);
+}
+
+function openOffboardModal(id){
+  const emp = state.employees[id];
+  let lastWorkDate = "", reason = "";
+  const body = el("div",{},[
+    el("h2",{},"เริ่มกระบวนการ Offboarding"),
+    el("div",{class:"sub"}, `สำหรับ ${emp.name} — ระบบจะสร้าง Offboarding Checklist ให้อัตโนมัติ`),
+    el("div",{class:"field-grid"},[
+      el("div",{class:"field"},[el("label",{},"วันทำงานวันสุดท้าย"), el("input",{type:"date", oninput:(e)=>lastWorkDate=e.target.value})]),
+      el("div",{class:"field"},[el("label",{},"เหตุผลการออก"), el("input",{oninput:(e)=>reason=e.target.value})]),
+    ]),
+    el("div",{class:"modal-foot"},[
+      el("button",{class:"btn", onclick:closeModal}, "ยกเลิก"),
+      el("button",{class:"btn btn-danger", onclick: async ()=>{
+        await saveEmployee(id, {
+          status: "offboarding",
+          offboarding: { started:true, items: makeItemsFromTemplate(OFF_TEMPLATE), lastWorkDate, reason, exitSummary:"" }
+        });
+        state.activeTab = "offboarding";
+        closeModal();
+        render();
+      }}, "เริ่ม Offboarding")
+    ])
+  ]);
+  openModal(body);
+}
+
+/* ============== SETTINGS MODAL (Apps Script API URL) ============== */
+function openSettingsModal(){
+  let urlVal = getApiUrl();
+  const body = el("div",{},[
+    el("h2",{},"ตั้งค่าการเชื่อมต่อฐานข้อมูล"),
+    el("div",{class:"sub"},"วาง URL ของ Google Apps Script Web App ที่ deploy แล้ว (ดูวิธีทำใน README.md ของ repo) ข้อมูลจะถูกเก็บใน Google Sheet ของคุณเอง"),
+    el("div",{class:"field"},[
+      el("label",{},"Apps Script Web App URL"),
+      el("input",{value:urlVal, placeholder:"https://script.google.com/macros/s/XXXXXXXX/exec", oninput:(e)=>urlVal=e.target.value})
+    ]),
+    el("div",{class:"modal-foot"},[
+      el("button",{class:"btn", onclick:closeModal}, "ปิด"),
+      el("button",{class:"btn btn-primary", onclick:()=>{
+        setApiUrl(urlVal);
+        closeModal();
+        toast("บันทึก URL แล้ว กำลังเชื่อมต่อ...");
+        startPolling();
+      }}, "บันทึกและเชื่อมต่อ")
+    ])
+  ]);
+  openModal(body);
+}
+
+/* ============== BOOT ============== */
+(function boot(){
+  render();
+  startPolling();
+})();
+</script>
+</body>
+</html>
