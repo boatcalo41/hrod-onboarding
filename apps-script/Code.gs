@@ -28,16 +28,29 @@
  * That's the trade-off for a simple, no-backend, no-auth setup. Keep the
  * URL private to people who should be able to use the HR tool, and don't
  * put anything in it you wouldn't want someone with the link to see.
+ *
+ * Orientation exam integration: the "list" response also includes
+ * `orientation`, a map of employee code -> {score, total, name, submittedAt},
+ * read live from the "Orientation Quiz" Google Form's response spreadsheet
+ * (ORIENTATION_QUIZ_SHEET_ID below). The script account running this Web
+ * App must have view access to that spreadsheet, or orientation results are
+ * silently left empty rather than breaking the rest of the app.
  */
 
 var SHEET_NAME = 'employees';
 var CONFIG_SHEET_NAME = 'config';
+var ORIENTATION_QUIZ_SHEET_ID = '1pbJ_i3eEzYgobWxXTE5Vl1TDQh4pqdCb00yYZPDqIts';
 
 function doGet(e) {
   try {
     var action = (e && e.parameter && e.parameter.action) || 'list';
     if (action === 'list') {
-      return jsonResponse({ ok: true, employees: listEmployees(), config: listConfig() });
+      return jsonResponse({
+        ok: true,
+        employees: listEmployees(),
+        config: listConfig(),
+        orientation: listOrientationResults()
+      });
     }
     return jsonResponse({ ok: false, error: 'unknown action: ' + action });
   } catch (err) {
@@ -114,6 +127,40 @@ function listEmployees() {
     } catch (parseErr) {
       // skip a row that doesn't contain valid JSON rather than failing the whole list
     }
+  }
+  return out;
+}
+
+function listOrientationResults() {
+  // Returns { "<employee code>": {score, total, name, submittedAt} }, built
+  // from the Orientation Quiz response sheet. Later rows (later submissions)
+  // overwrite earlier ones for the same code, so a re-take counts.
+  var out = {};
+  try {
+    var ss = SpreadsheetApp.openById(ORIENTATION_QUIZ_SHEET_ID);
+    var sheet = ss.getSheets()[0];
+    var values = sheet.getDataRange().getValues();
+    // Expected columns: A ประทับเวลา, B คะแนน ("x / y"), C รหัสพนักงาน, D ชื่อ-นามสกุล
+    for (var i = 1; i < values.length; i++) {
+      var ts = values[i][0];
+      var scoreStr = String(values[i][1] || '');
+      var code = String(values[i][2] || '').trim();
+      var name = values[i][3];
+      if (!code) continue;
+      var parts = scoreStr.split('/');
+      var score = parseFloat(parts[0]);
+      var total = parseFloat(parts[1]);
+      if (isNaN(score) || isNaN(total)) continue;
+      out[code] = {
+        score: score,
+        total: total,
+        name: name,
+        submittedAt: (ts instanceof Date) ? ts.toISOString() : String(ts)
+      };
+    }
+  } catch (err) {
+    // Quiz sheet unreachable (not shared with this script's account, renamed,
+    // etc.) — fail soft so the rest of the app still works.
   }
   return out;
 }

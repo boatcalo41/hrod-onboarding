@@ -194,6 +194,10 @@
   .biz-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;}
   .biz-card b{color:var(--brand);display:block;margin-bottom:4px;font-size:13.5px;}
   .biz-card span{font-size:12.5px;color:var(--sub);}
+  .orient-card{margin-bottom:18px;}
+  .orient-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;}
+  .orient-label{font-size:12px;color:var(--sub);margin-bottom:4px;}
+  .orient-val{font-size:15px;font-weight:700;color:var(--ink);}
   .kpi-table{width:100%;border-collapse:collapse;margin-top:10px;}
   .kpi-table th{background:var(--brand);color:#fff;font-size:12px;padding:8px 10px;text-align:left;}
   .kpi-table td{border:1px solid var(--line);padding:9px 10px;font-size:12.5px;vertical-align:top;}
@@ -438,11 +442,55 @@ function employeeOverallStatusLabel(emp){
   return {label:"กำลัง Onboard", cls:"badge-onboarding"};
 }
 
+/* ---------- Orientation exam (Google Form) + probation date ---------- */
+function getOrientationResult(emp){
+  const code = (emp.code||"").trim();
+  if(!code) return null;
+  return state.orientationResults[code] || null;
+}
+function probationDueDate(emp){
+  return emp.startDate ? addDays(emp.startDate, 105) : null;
+}
+function orientationPassFail(res){
+  if(!res || !res.total) return null;
+  return (res.score / res.total) >= 0.8;
+}
+function renderOrientationCard(emp){
+  const res = getOrientationResult(emp);
+  const due = probationDueDate(emp);
+  const pass = orientationPassFail(res);
+  const items = [
+    el("div",{class:"orient-item"},[
+      el("div",{class:"orient-label"}, "วันปฐมนิเทศ (วันสอบ)"),
+      el("div",{class:"orient-val"}, res && res.submittedAt ? fmtDate(res.submittedAt) : "ยังไม่พบผลสอบ")
+    ]),
+    el("div",{class:"orient-item"},[
+      el("div",{class:"orient-label"}, "คะแนนข้อสอบปฐมนิเทศ"),
+      res
+        ? el("div",{class:"orient-val"},[
+            el("span",{style: pass? "color:var(--brand-green);" : "color:var(--bad);"}, `${res.score} / ${res.total}`),
+            " ",
+            el("span",{class:"badge "+(pass?"badge-active":"badge-offboarding")}, pass? "ผ่านเกณฑ์ 80%" : "ยังไม่ผ่านเกณฑ์ 80%")
+          ])
+        : el("div",{class:"orient-val"}, "-")
+    ]),
+    el("div",{class:"orient-item"},[
+      el("div",{class:"orient-label"}, "วันครบกำหนดทดลองงาน (105 วัน)"),
+      el("div",{class:"orient-val"}, due ? fmtDate(due) : "-")
+    ])
+  ];
+  return el("div",{class:"card orient-card"},[
+    el("div",{class:"section-title", style:"margin-top:0;"}, "การปฐมนิเทศและทดลองงาน"),
+    el("div",{class:"orient-grid"}, items)
+  ]);
+}
+
 /* ============== STATE ============== */
 const state = {
   role: "hr",
   employees: {},         // id -> doc data
   config: {},            // shared app-wide settings (see saveConfig) — onbTemplate, offTemplate, kpiRows, learningSections, supervisorNames
+  orientationResults: {}, // code -> {score, total, name, submittedAt} from the Orientation Quiz Google Form responses
   selectedId: null,
   view: "dashboard", // dashboard | employee | policies
   activeTab: "info",
@@ -482,7 +530,7 @@ async function apiList(){
   if(!res.ok) throw new Error("http " + res.status);
   const body = await res.json();
   if(!body.ok) throw new Error(body.error || "api error");
-  return { employees: body.employees || [], config: body.config || {} };
+  return { employees: body.employees || [], config: body.config || {}, orientation: body.orientation || {} };
 }
 
 async function apiSetConfig(key, data){
@@ -538,13 +586,15 @@ function startPolling(){
 
 async function refreshEmployees(){
   try{
-    const { employees: list, config } = await apiList();
+    const { employees: list, config, orientation } = await apiList();
     const next = {};
     list.forEach(row=>{ next[row.id] = row.data; });
     const changed = JSON.stringify(next) !== JSON.stringify(state.employees)
-      || JSON.stringify(config) !== JSON.stringify(state.config);
+      || JSON.stringify(config) !== JSON.stringify(state.config)
+      || JSON.stringify(orientation) !== JSON.stringify(state.orientationResults);
     state.employees = next;
     state.config = config || {};
+    state.orientationResults = orientation || {};
     if(!state.selectedId){
       const ids = Object.keys(state.employees);
       if(ids.length) state.selectedId = ids[0];
@@ -1175,6 +1225,8 @@ function renderPortalDashboard(emp, id){
         days!=null ? `เริ่มงานมาแล้ว ${days} วัน (${fmtDate(emp.startDate)})` : "ยังไม่ระบุวันเริ่มงาน")
     ])
   ]));
+
+  wrap.appendChild(renderOrientationCard(emp));
 
   const phaseKeys = [["phase1","เฟส 1"],["phase2","เฟส 2"],["phase3","เฟส 3"],["phase4","เฟส 4"]];
   const onb = emp.onboarding || {};
@@ -1851,6 +1903,8 @@ function renderPassportTab(emp, id){
         ppRow("วันเริ่มงาน", fmtDate(emp.startDate)),
         ppRow("วันครบ 90-119 วัน", emp.startDate? fmtDate(addDays(emp.startDate,105)) : "-"),
         ppRow("รหัสพนักงาน", emp.code||"-"),
+        ppRow("วันปฐมนิเทศ (วันสอบ)", (()=>{ const r=getOrientationResult(emp); return r&&r.submittedAt? fmtDate(r.submittedAt) : "ยังไม่พบผลสอบ"; })()),
+        ppRow("คะแนนข้อสอบปฐมนิเทศ", (()=>{ const r=getOrientationResult(emp); if(!r) return "-"; const p=orientationPassFail(r); return `${r.score} / ${r.total}  ${p? "✅ ผ่านเกณฑ์":"⚠️ ไม่ผ่านเกณฑ์"}`; })()),
       ]),
       el("div",{class:"pp-section-h"}, "Connection — คนที่พึ่งได้ (ติดอะไร ถามใคร)"),
       el("table",{class:"pp-conn-table"},[
@@ -1935,6 +1989,7 @@ function renderInfoTab(emp, id){
   ]);
   const wrap = el("div",{});
   wrap.appendChild(card);
+  wrap.appendChild(el("div",{style:"margin-top:16px;"}, renderOrientationCard(emp)));
   wrap.appendChild(connCard);
   if(!editable) wrap.appendChild(el("div",{class:"lock-note", style:"margin-top:12px;"}, "มุมมองนี้ดูข้อมูลได้อย่างเดียว — ให้ HR เป็นผู้แก้ไขข้อมูลพนักงาน"));
   return wrap;
