@@ -201,7 +201,7 @@
 
 <script>
 /* ============== TEMPLATES ============== */
-const ONB_TEMPLATE = {
+const ONB_TEMPLATE_DEFAULT = {
   phase1: { title: "เฟส 1 · ก่อนวันเริ่มงาน (Pre-Onboarding)", items: [
     "จัดทำสัญญาจ้างและเตรียมเอกสารสมัครงานให้ครบถ้วน",
     "แจ้งฝ่าย IT จัดเตรียมคอมพิวเตอร์ อีเมล และสิทธิ์เข้าใช้งานระบบ (ถ้ามี)",
@@ -243,7 +243,7 @@ const ONB_TEMPLATE = {
   ]}
 };
 
-const OFF_TEMPLATE = {
+const OFF_TEMPLATE_DEFAULT = {
   notice: { title: "แจ้งลาออก / สิ้นสุดสัญญา", items: [
     "ได้รับหนังสือลาออก/แจ้งสิ้นสุดสัญญา พร้อมระบุวันทำงานวันสุดท้าย",
     "หัวหน้างาน/ผู้จัดการอนุมัติ และแจ้ง HR อย่างเป็นทางการ",
@@ -299,7 +299,7 @@ const BUDDY_QUESTIONS = [
 
 const ROLE_LABEL = { hr: "ฝ่ายบุคคล (HR)", manager: "หัวหน้างาน / พี่เลี้ยง", employee: "พนักงานใหม่" };
 
-const POLICY_SECTIONS = [
+const POLICY_SECTIONS_DEFAULT = [
   { title: "วันและเวลาทำงานปกติ เวลาพัก และวันหยุด", url: "assets/policy-worktime.png" },
   { title: "รอบการจ่ายค่าจ้าง", url: "assets/policy-payroll.png" },
   { title: "การบันทึกเวลาเข้า-ออกงาน (สแกนใบหน้า App Human Soft)", url: "assets/policy-facescan.png" },
@@ -321,6 +321,16 @@ const BUSINESS_LINES = [
   ["Rubber Tek", "ให้บริการออกแบบโรงงานและจัดหาเครื่องจักรแบบครบวงจร"],
   ["Waste Tek", "ให้บริการออกแบบและก่อสร้างโรงงานจัดการขยะมูลฝอย (MSW) รวมถึงจัดจำหน่ายผลิตภัณฑ์จากขยะเพื่อใช้เป็นเชื้อเพลิง"],
 ];
+
+/* ============== LIVE CONFIG (editable by HR Admin Portal, shared via Google Sheets) ==============
+   state.config holds HR-editable overrides for the templates/content below, stored in the
+   "config" sheet via saveConfig()/apiSetConfig(). Falls back to the built-in defaults above
+   whenever HR hasn't customized something yet, so the app works out of the box. */
+function getOnbTemplate(){ return state.config.onbTemplate || ONB_TEMPLATE_DEFAULT; }
+function getOffTemplate(){ return state.config.offTemplate || OFF_TEMPLATE_DEFAULT; }
+function getKpiRows(){ return state.config.kpiRows || KPI_ROWS_DEFAULT; }
+function getLearningSections(){ return state.config.learningSections || POLICY_SECTIONS_DEFAULT; }
+function getConfiguredSupervisorNames(){ return state.config.supervisorNames || []; }
 
 /* ============== HELPERS ============== */
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
@@ -389,6 +399,7 @@ function employeeOverallStatusLabel(emp){
 const state = {
   role: "hr",
   employees: {},         // id -> doc data
+  config: {},            // shared app-wide settings (see saveConfig) — onbTemplate, offTemplate, kpiRows, learningSections, supervisorNames
   selectedId: null,
   view: "dashboard", // dashboard | employee | policies
   activeTab: "info",
@@ -396,6 +407,8 @@ const state = {
   supervisorTab: "team",  // Supervisor Portal section (used when role === "manager")
   supervisorName: "",     // which manager/buddy name the "คุณคือ" picker has selected
   supervisorMemberId: null, // which team member is open in ojt/skill/coaching tabs
+  hrAdminTab: "dashboard", // HR Admin Portal section (used when role === "hr")
+  hrTemplateMode: "onb",  // "onb" | "off" — which checklist template Journey Template is editing
   loading: true,
   dbReady: false,     // true once the Apps Script API has answered at least once
   apiConfigured: false,
@@ -423,7 +436,19 @@ async function apiList(){
   if(!res.ok) throw new Error("http " + res.status);
   const body = await res.json();
   if(!body.ok) throw new Error(body.error || "api error");
-  return body.employees || []; // [{id, data, updatedAt}]
+  return { employees: body.employees || [], config: body.config || {} };
+}
+
+async function apiSetConfig(key, data){
+  const url = getApiUrl();
+  if(!url) throw new Error("no-api-url");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "setConfig", key, data })
+  });
+  const body = await res.json();
+  if(!body.ok) throw new Error(body.error || "api error");
 }
 
 async function apiSet(id, data){
@@ -467,11 +492,13 @@ function startPolling(){
 
 async function refreshEmployees(){
   try{
-    const list = await apiList();
+    const { employees: list, config } = await apiList();
     const next = {};
     list.forEach(row=>{ next[row.id] = row.data; });
-    const changed = JSON.stringify(next) !== JSON.stringify(state.employees);
+    const changed = JSON.stringify(next) !== JSON.stringify(state.employees)
+      || JSON.stringify(config) !== JSON.stringify(state.config);
     state.employees = next;
+    state.config = config || {};
     if(!state.selectedId){
       const ids = Object.keys(state.employees);
       if(ids.length) state.selectedId = ids[0];
@@ -492,6 +519,17 @@ async function refreshEmployees(){
   }
 }
 
+// Optimistically updates state.config and persists it to the "config" sheet.
+// Used by the HR Admin Portal (Journey Template / Learning Management /
+// Assessment Management / User & Role Management) to edit shared, app-wide
+// settings that affect every user, not just one employee record.
+async function saveConfig(key, data){
+  state.config = { ...state.config, [key]: data };
+  render();
+  try{ await apiSetConfig(key, data); }
+  catch(e){ toast("บันทึกการตั้งค่าไม่สำเร็จ: " + (e.message||e)); console.error(e); }
+}
+
 async function saveEmployee(id, patch){
   const merged = {...(state.employees[id]||{}), ...patch};
   state.employees[id] = merged; // optimistic local update
@@ -510,9 +548,9 @@ async function createEmployee(info){
     ...info,
     status: "onboarding",
     createdAt: Date.now(),
-    onboarding: makeItemsFromTemplate(ONB_TEMPLATE),
+    onboarding: makeItemsFromTemplate(getOnbTemplate()),
     reflections: makeEmptyReflections(),
-    offboarding: { started:false, items: makeItemsFromTemplate(OFF_TEMPLATE), lastWorkDate:"", reason:"", exitSummary:"" }
+    offboarding: { started:false, items: makeItemsFromTemplate(getOffTemplate()), lastWorkDate:"", reason:"", exitSummary:"" }
   };
   state.employees[id] = doc;
   state.selectedId = id;
@@ -556,6 +594,17 @@ const PORTAL_SECTIONS = [
   {key:"achievements", icon:"🏆", label:"My Achievements"},
 ];
 
+const HR_ADMIN_SECTIONS = [
+  {key:"dashboard", icon:"📈", label:"HR Dashboard"},
+  {key:"employees", icon:"🗂️", label:"Employee Management"},
+  {key:"journey", icon:"🧭", label:"Journey Template"},
+  {key:"learning", icon:"📚", label:"Learning Management"},
+  {key:"assessment", icon:"📊", label:"Assessment Management"},
+  {key:"reports", icon:"📑", label:"Reports & Analytics"},
+  {key:"settings", icon:"⚙️", label:"System Settings"},
+  {key:"users", icon:"🧑‍🤝‍🧑", label:"User & Role Management"},
+];
+
 function renderSidebar(){
   const sidebarHead = el("div",{class:"sidebar-head"},[
     el("div",{class:"brand"},[
@@ -579,36 +628,47 @@ function renderSidebar(){
     return el("div",{class:"sidebar"},[ sidebarHead, roleBox, renderSupervisorSidebarBody(settingsBtn) ]);
   }
 
-  const emps = Object.entries(state.employees).map(([id,d])=>({id,...d}));
-  emps.sort((a,b)=> (a.name||"").localeCompare(b.name||"", "th"));
-  const search = state.searchTerm || "";
-  const filtered = emps.filter(e => !search || (e.name||"").toLowerCase().includes(search.toLowerCase()) || (e.position||"").toLowerCase().includes(search.toLowerCase()));
+  // Default branch: role === "hr" → HR Admin Portal
+  const nav = el("div",{style:"padding:0 10px;"}, HR_ADMIN_SECTIONS.map(s=>
+    el("div",{
+      class:"nav-link"+(state.hrAdminTab===s.key?" active":""),
+      style:"margin:0 6px 8px;",
+      onclick:()=>{ state.hrAdminTab=s.key; if(s.key==="dashboard") state.selectedId=null; render(); }
+    }, s.icon+"  "+s.label)
+  ));
 
-  const list = el("div",{class:"emp-list"}, filtered.length ? filtered.map(e=>{
-    const st = employeeOverallStatusLabel(e);
-    return el("div",{
-      class:"emp-item"+(e.id===state.selectedId && state.view==="employee"?" active":""),
-      onclick:()=>{ state.selectedId=e.id; state.activeTab="info"; state.view="employee"; render(); }
-    },[
-      el("div",{class:"emp-name"}, e.name || "(ไม่มีชื่อ)"),
-      el("div",{class:"emp-meta"}, `${e.position||"-"} · ${e.department||"-"}`),
-      el("div",{class:"badge "+st.cls}, st.label)
-    ]);
-  }) : [el("div",{class:"emp-meta",style:"padding:16px 6px;"}, state.loading? "กำลังโหลด..." : "ยังไม่มีพนักงานในระบบ")]);
+  const sidebar = el("div",{class:"sidebar"},[ sidebarHead, roleBox, nav ]);
 
-  const sidebar = el("div",{class:"sidebar"},[
-    sidebarHead,
-    roleBox,
-    el("div",{class:"nav-link"+(state.view==="policies"?" active":""), onclick:()=>{ state.view="policies"; render(); }}, "📋 นโยบาย & สวัสดิการบริษัท"),
-    el("div",{class:"emp-search"},[
+  if(state.hrAdminTab==="employees"){
+    const emps = Object.entries(state.employees).map(([id,d])=>({id,...d}));
+    emps.sort((a,b)=> (a.name||"").localeCompare(b.name||"", "th"));
+    const search = state.searchTerm || "";
+    const filtered = emps.filter(e => !search || (e.name||"").toLowerCase().includes(search.toLowerCase()) || (e.position||"").toLowerCase().includes(search.toLowerCase()));
+
+    const list = el("div",{class:"emp-list"}, filtered.length ? filtered.map(e=>{
+      const st = employeeOverallStatusLabel(e);
+      return el("div",{
+        class:"emp-item"+(e.id===state.selectedId && state.view==="employee"?" active":""),
+        onclick:()=>{ state.selectedId=e.id; state.activeTab="info"; state.view="employee"; render(); }
+      },[
+        el("div",{class:"emp-name"}, e.name || "(ไม่มีชื่อ)"),
+        el("div",{class:"emp-meta"}, `${e.position||"-"} · ${e.department||"-"}`),
+        el("div",{class:"badge "+st.cls}, st.label)
+      ]);
+    }) : [el("div",{class:"emp-meta",style:"padding:16px 6px;"}, state.loading? "กำลังโหลด..." : "ยังไม่มีพนักงานในระบบ")]);
+
+    sidebar.appendChild(el("div",{class:"emp-search", style:"margin-top:6px;"},[
       el("input",{placeholder:"ค้นหาพนักงาน...", value:search, oninput:(e)=>{ state.searchTerm=e.target.value; render(); }})
-    ]),
-    list,
-    el("div",{class:"sidebar-foot"},[
-      el("button",{class:"btn btn-primary btn-block", onclick: openAddEmployeeModal}, "+ เพิ่มพนักงานใหม่"),
-      settingsBtn
-    ])
-  ]);
+    ]));
+    sidebar.appendChild(list);
+  } else {
+    sidebar.appendChild(el("div",{style:"flex:1;"}));
+  }
+
+  sidebar.appendChild(el("div",{class:"sidebar-foot"},[
+    state.hrAdminTab==="employees" ? el("button",{class:"btn btn-primary btn-block", style:"margin-bottom:8px;", onclick: openAddEmployeeModal}, "+ เพิ่มพนักงานใหม่") : null,
+    settingsBtn
+  ]));
   return sidebar;
 }
 
@@ -648,6 +708,7 @@ const SUPERVISOR_SECTIONS = [
 
 function getSupervisorNames(){
   const names = new Set();
+  getConfiguredSupervisorNames().forEach(n=> n && names.add(n));
   Object.values(state.employees).forEach(e=>{
     if(e.manager) names.add(e.manager);
     if(e.buddy) names.add(e.buddy);
@@ -699,12 +760,25 @@ function renderMain(){
     content.appendChild(renderEmployeePortal());
   } else if(state.role==="manager"){
     content.appendChild(renderSupervisorPortal());
-  } else if(state.view==="policies"){
-    content.appendChild(renderPoliciesView());
-  } else if(!state.selectedId || !state.employees[state.selectedId]){
+  } else if(state.hrAdminTab==="dashboard"){
     content.appendChild(renderDashboard());
+  } else if(state.hrAdminTab==="employees"){
+    if(!state.selectedId || !state.employees[state.selectedId]) content.appendChild(renderDashboard());
+    else content.appendChild(renderEmployeeDetail(state.employees[state.selectedId], state.selectedId));
+  } else if(state.hrAdminTab==="journey"){
+    content.appendChild(renderHrJourneyTemplateTab());
+  } else if(state.hrAdminTab==="learning"){
+    content.appendChild(renderHrLearningManagementTab());
+  } else if(state.hrAdminTab==="assessment"){
+    content.appendChild(renderHrAssessmentManagementTab());
+  } else if(state.hrAdminTab==="reports"){
+    content.appendChild(renderHrReportsTab());
+  } else if(state.hrAdminTab==="settings"){
+    content.appendChild(renderHrSettingsTab());
+  } else if(state.hrAdminTab==="users"){
+    content.appendChild(renderHrUserRoleTab());
   } else {
-    content.appendChild(renderEmployeeDetail(state.employees[state.selectedId], state.selectedId));
+    content.appendChild(renderDashboard());
   }
   main.appendChild(content);
   return main;
@@ -737,12 +811,23 @@ function renderTopbar(){
       ])
     ]);
   }
-  const emp = (state.view==="employee" && state.selectedId) ? state.employees[state.selectedId] : null;
-  const isPolicies = state.view==="policies";
+  // Default branch: role === "hr" → HR Admin Portal
+  const section = HR_ADMIN_SECTIONS.find(s=>s.key===state.hrAdminTab) || HR_ADMIN_SECTIONS[0];
+  const emp = (state.hrAdminTab==="employees" && state.selectedId) ? state.employees[state.selectedId] : null;
+  const subtitles = {
+    dashboard: "ระบบดูแลพนักงานใหม่ตั้งแต่วันแรกจนครบทดลองงาน และกระบวนการเมื่อพนักงานออกจากงาน",
+    employees: "รายชื่อพนักงานทั้งหมดในระบบ — เลือกชื่อที่แถบซ้ายเพื่อดูหรือแก้ไขรายละเอียด",
+    journey: "แก้ไข \"แม่แบบ\" Onboarding/Offboarding Checklist กลาง — มีผลกับพนักงานใหม่ที่สร้างจากนี้ไป",
+    learning: "จัดการหัวข้อนโยบาย/สวัสดิการและรูปภาพที่แสดงใน Learning Center",
+    assessment: "จัดการตัวชี้วัดงาน (KPI) มาตรฐานที่ใช้ประเมินพนักงานช่วงทดลองงาน",
+    reports: "ภาพรวมเชิงลึกของกระบวนการ Onboarding/Offboarding ทั้งองค์กร พร้อมส่งออกรายงาน",
+    settings: "การเชื่อมต่อฐานข้อมูลและข้อมูลระบบ",
+    users: "รายชื่อหัวหน้างาน/พี่เลี้ยง/HR ที่ใช้อ้างอิงทั่วทั้งระบบ",
+  };
   return el("div",{class:"topbar"},[
     el("div",{},[
-      el("h1",{}, isPolicies? "นโยบาย & สวัสดิการบริษัท" : (emp ? emp.name : "ภาพรวมระบบ HROD")),
-      el("div",{class:"sub"}, isPolicies ? "ระเบียบข้อบังคับในการทำงาน สวัสดิการ และวัฒนธรรมองค์กร ALLIED-TEK" : (emp ? `${emp.position||"-"} · ${emp.department||"-"} · เริ่มงาน ${fmtDate(emp.startDate)}` : "ระบบดูแลพนักงานใหม่ตั้งแต่วันแรกจนครบทดลองงาน และกระบวนการเมื่อพนักงานออกจากงาน"))
+      el("h1",{}, emp ? emp.name : section.icon+" "+section.label),
+      el("div",{class:"sub"}, emp ? `${emp.position||"-"} · ${emp.department||"-"} · เริ่มงาน ${fmtDate(emp.startDate)}` : (subtitles[state.hrAdminTab]||""))
     ]),
     el("div",{style:"display:flex;gap:8px;align-items:center;"},[
       el("span",{class:"pill"}, "มุมมอง: " + ROLE_LABEL[state.role]),
@@ -765,7 +850,7 @@ function renderPoliciesView(){
   wrap.appendChild(el("div",{class:"section-title"},"วัฒนธรรมองค์กร · Core Value 5 ข้อ (Brand Value)"));
   wrap.appendChild(el("div",{class:"policy-card"},[ el("img",{src:CULTURE_BRAND_VALUE_IMG, alt:"Brand Value"}) ]));
   wrap.appendChild(el("div",{class:"section-title"},"ระเบียบข้อบังคับในการทำงานและสวัสดิการพนักงาน"));
-  POLICY_SECTIONS.forEach(p=>{
+  getLearningSections().forEach(p=>{
     wrap.appendChild(el("div",{class:"policy-card"},[ el("h3",{},p.title), el("img",{src:p.url, alt:p.title, loading:"lazy"}) ]));
   });
   return wrap;
@@ -998,8 +1083,8 @@ function renderPortalJourneyTab(emp, id){
 
 function renderMissionsTab(emp, id){
   const wrap = el("div",{});
-  const onb = emp.onboarding || makeItemsFromTemplate(ONB_TEMPLATE);
-  Object.keys(ONB_TEMPLATE).forEach(pk=>{
+  const onb = emp.onboarding || makeItemsFromTemplate(getOnbTemplate());
+  Object.keys(getOnbTemplate()).forEach(pk=>{
     const meta = MISSION_META[pk] || {icon:"🎯", label:pk};
     const items = onb[pk] || [];
     const prog = phaseProgress(items);
@@ -1011,7 +1096,7 @@ function renderMissionsTab(emp, id){
       ]),
       el("div",{class:"progress-bar", style:"width:100%;"},[ el("div",{class:"progress-fill", style:`width:${prog}%`}) ])
     ]));
-    wrap.appendChild(renderChecklistPhase(pk, ONB_TEMPLATE[pk], items, (newItems)=>{
+    wrap.appendChild(renderChecklistPhase(pk, getOnbTemplate()[pk], items, (newItems)=>{
       const next = {...onb, [pk]: newItems};
       saveEmployee(id, {onboarding: next});
     }, state.role==="hr" || state.role==="manager"));
@@ -1267,6 +1352,287 @@ function renderSupervisorApprovalTab(team){
   return wrap;
 }
 
+/* ============== HR ADMIN PORTAL ============== */
+
+function cloneTemplate(tpl){ return JSON.parse(JSON.stringify(tpl)); }
+
+function renderHrJourneyTemplateTab(){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "แก้ไข \"แม่แบบ\" ที่ใช้สร้าง Checklist ให้พนักงานใหม่ทุกคนจากนี้ไป — พนักงานที่มีอยู่แล้วจะไม่เปลี่ยน (ข้อมูลของแต่ละคนเป็นสำเนาแยกไว้แล้ว) แก้ชื่อหัวข้อ/เพิ่ม-ลบรายการย่อยได้ แต่เพิ่ม/ลบ \"เฟส\" หลักไม่ได้ เพราะมีผลกับการแสดงผลส่วนอื่นของระบบ"));
+
+  const tabs = el("div",{class:"tabs"},[
+    el("div",{class:"tab"+(state.hrTemplateMode==="onb"?" active":""), onclick:()=>{ state.hrTemplateMode="onb"; render(); }}, "Onboarding Checklist"),
+    el("div",{class:"tab"+(state.hrTemplateMode==="off"?" active":""), onclick:()=>{ state.hrTemplateMode="off"; render(); }}, "Offboarding Checklist"),
+  ]);
+  wrap.appendChild(tabs);
+
+  const isOnb = state.hrTemplateMode==="onb";
+  const configKey = isOnb ? "onbTemplate" : "offTemplate";
+  const tpl = cloneTemplate(isOnb ? getOnbTemplate() : getOffTemplate());
+
+  Object.keys(tpl).forEach(pk=>{
+    const phase = tpl[pk];
+    const card = el("div",{class:"phase-card"});
+    card.appendChild(el("div",{class:"phase-head"},[
+      el("input",{value:phase.title, style:"font-weight:700;font-size:13.5px;border:none;background:transparent;flex:1;",
+        onchange:(e)=>{ phase.title=e.target.value; saveConfig(configKey, tpl); }}),
+      el("span",{class:"pill"}, phase.items.length+" รายการ")
+    ]));
+    phase.items.forEach((label, idx)=>{
+      card.appendChild(el("div",{style:"display:flex;gap:8px;padding:8px 16px;border-top:1px solid #f1f2f4;align-items:center;"},[
+        el("input",{style:"flex:1;", value:label, onchange:(e)=>{ phase.items[idx]=e.target.value; saveConfig(configKey, tpl); }}),
+        el("button",{class:"del-btn", title:"ลบรายการนี้", onclick:()=>{ phase.items.splice(idx,1); saveConfig(configKey, tpl); render(); }}, "✕")
+      ]));
+    });
+    let newLabel="";
+    const addInput = el("input",{placeholder:"เพิ่มรายการย่อยใหม่...", oninput:(e)=>newLabel=e.target.value});
+    card.appendChild(el("div",{class:"add-item-row"},[
+      addInput,
+      el("button",{class:"btn", onclick:()=>{
+        if(!newLabel.trim()) return;
+        phase.items.push(newLabel.trim());
+        saveConfig(configKey, tpl);
+        addInput.value=""; newLabel="";
+        render();
+      }}, "เพิ่ม")
+    ]));
+    wrap.appendChild(card);
+  });
+
+  if(state.config[configKey]){
+    wrap.appendChild(el("button",{class:"btn btn-danger", style:"margin-top:4px;", onclick:()=>{
+      if(confirm("รีเซ็ตแม่แบบนี้กลับเป็นค่าเริ่มต้นของระบบ?")) saveConfig(configKey, null);
+    }}, "↺ รีเซ็ตเป็นค่าเริ่มต้น"));
+  }
+  return wrap;
+}
+
+function renderHrLearningManagementTab(){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "แก้ไขหัวข้อนโยบาย/สวัสดิการที่แสดงใน Learning Center — ใส่ลิงก์รูปภาพ (URL) แทนการอัปโหลดไฟล์ เนื่องจากระบบนี้ไม่มีพื้นที่เก็บไฟล์ของตัวเอง"));
+
+  const sections = cloneTemplate(getLearningSections());
+  const list = el("div",{}, sections.map((s, idx)=> el("div",{class:"card", style:"margin-bottom:10px;"},[
+    el("div",{class:"field-grid"},[
+      el("div",{class:"field"},[ el("label",{},"หัวข้อ"),
+        el("input",{value:s.title, onchange:(e)=>{ sections[idx]={...s,title:e.target.value}; saveConfig("learningSections", sections); }}) ]),
+      el("div",{class:"field"},[ el("label",{},"ลิงก์รูปภาพ (URL)"),
+        el("input",{value:s.url, onchange:(e)=>{ sections[idx]={...s,url:e.target.value}; saveConfig("learningSections", sections); }}) ]),
+    ]),
+    el("div",{style:"margin-top:8px;display:flex;justify-content:flex-end;"},[
+      el("button",{class:"btn btn-danger", onclick:()=>{ sections.splice(idx,1); saveConfig("learningSections", sections); render(); }}, "ลบหัวข้อนี้")
+    ])
+  ])));
+  wrap.appendChild(list);
+
+  let title="", url="";
+  const titleInput = el("input",{placeholder:"หัวข้อใหม่...", oninput:(e)=>title=e.target.value});
+  const urlInput = el("input",{placeholder:"https://... (ลิงก์รูปภาพ)", oninput:(e)=>url=e.target.value});
+  wrap.appendChild(el("div",{class:"card", style:"display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;"},[
+    el("div",{class:"field",style:"flex:1;min-width:200px;"},[el("label",{},"หัวข้อใหม่"), titleInput]),
+    el("div",{class:"field",style:"flex:1;min-width:200px;"},[el("label",{},"ลิงก์รูปภาพ"), urlInput]),
+    el("button",{class:"btn btn-primary", onclick:()=>{
+      if(!title.trim()) return;
+      const next = [...sections, {title:title.trim(), url:url.trim()}];
+      saveConfig("learningSections", next);
+      titleInput.value=""; urlInput.value=""; title=""; url="";
+      render();
+    }}, "+ เพิ่มหัวข้อ")
+  ]));
+
+  wrap.appendChild(el("div",{class:"section-title"}, "ตัวอย่างที่พนักงานจะเห็น"));
+  wrap.appendChild(renderPoliciesView());
+  return wrap;
+}
+
+function renderHrAssessmentManagementTab(){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "แก้ไขตัวชี้วัดงาน (KPI) มาตรฐานที่ใช้ในแท็บ Assessment ของทุกตำแหน่ง"));
+
+  const rows = cloneTemplate(getKpiRows());
+  wrap.appendChild(el("div",{}, rows.map((r, idx)=> el("div",{class:"card", style:"margin-bottom:10px;"},[
+    el("div",{class:"field"},[el("label",{},"ตัววัด"),
+      el("input",{value:r[0], onchange:(e)=>{ rows[idx]=[e.target.value,r[1],r[2]]; saveConfig("kpiRows", rows); }})]),
+    el("div",{class:"field-grid", style:"margin-top:8px;"},[
+      el("div",{class:"field"},[el("label",{},"เป้าช่วงทดลองงาน"),
+        el("input",{value:r[1], onchange:(e)=>{ rows[idx]=[r[0],e.target.value,r[2]]; saveConfig("kpiRows", rows); }})]),
+      el("div",{class:"field"},[el("label",{},"ดูจากที่ไหน"),
+        el("input",{value:r[2], onchange:(e)=>{ rows[idx]=[r[0],r[1],e.target.value]; saveConfig("kpiRows", rows); }})]),
+    ]),
+    el("div",{style:"margin-top:8px;display:flex;justify-content:flex-end;"},[
+      el("button",{class:"btn btn-danger", onclick:()=>{ rows.splice(idx,1); saveConfig("kpiRows", rows); render(); }}, "ลบตัววัดนี้")
+    ])
+  ]))));
+
+  wrap.appendChild(el("div",{class:"card"},[
+    el("button",{class:"btn btn-primary btn-block", onclick:()=>{
+      const next=[...rows, ["ตัววัดใหม่...", "", ""]];
+      saveConfig("kpiRows", next); render();
+    }}, "+ เพิ่มตัววัด")
+  ]));
+
+  wrap.appendChild(el("div",{class:"section-title"}, "ตัวอย่างตารางที่จะแสดง"));
+  wrap.appendChild(el("table",{class:"kpi-table"},[
+    el("tr",{},[el("th",{},"ตัววัด"),el("th",{},"เป้าช่วงทดลองงาน"),el("th",{},"ดูจากที่ไหน")]),
+    ...rows.map(r=> el("tr",{}, r.map(c=> el("td",{}, c))))
+  ]));
+  return wrap;
+}
+
+function computeOnboardingStats(){
+  const emps = Object.values(state.employees);
+  const durations = [];
+  const slaList = [];
+  const SLA_DAYS = 120;
+  let leftDuringOnboarding = 0;
+  emps.forEach(e=>{
+    const prog = portalOverallProgress(e);
+    const days = portalDaysSinceStart(e);
+    if((e.status==="terminated" || e.status==="offboarding") && prog<100) leftDuringOnboarding++;
+    if(prog>=100 && e.startDate){
+      const phases=["phase1","phase2","phase3","phase4"];
+      let maxDate=null;
+      phases.forEach(pk=> (e.onboarding&&e.onboarding[pk]||[]).forEach(it=>{
+        if(it.status==="done" && it.date && (!maxDate || it.date>maxDate)) maxDate=it.date;
+      }));
+      if(maxDate){
+        const dur = Math.round((new Date(maxDate+"T00:00:00") - new Date(e.startDate+"T00:00:00"))/86400000);
+        if(dur>=0) durations.push(dur);
+      }
+    }
+    if(prog<100 && days!=null && days>SLA_DAYS && e.status!=="terminated"){
+      slaList.push({ name:e.name, position:e.position, department:e.department, days, prog });
+    }
+  });
+  return {
+    total: emps.length,
+    avgDuration: durations.length ? Math.round(durations.reduce((a,b)=>a+b,0)/durations.length) : null,
+    completedCount: durations.length,
+    churnRate: emps.length ? Math.round(leftDuringOnboarding/emps.length*100) : 0,
+    leftDuringOnboarding,
+    slaList: slaList.sort((a,b)=>b.days-a.days),
+  };
+}
+
+function downloadCsv(filename, rows){
+  const csv = rows.map(r=> r.map(v=> '"'+String(v==null?"":v).replace(/"/g,'""')+'"').join(",")).join("\r\n");
+  const blob = new Blob(["﻿"+csv], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+
+function renderHrReportsTab(){
+  const wrap = el("div",{});
+  const stats = computeOnboardingStats();
+
+  wrap.appendChild(el("div",{class:"dash-grid"},[
+    statCard(stats.avgDuration!=null?stats.avgDuration+" วัน":"-", "ระยะเวลา Onboarding เฉลี่ย (จากที่เสร็จแล้ว)", "⏱️", "var(--brand)"),
+    statCard(stats.churnRate+"%", "อัตราออกระหว่างทดลองงาน", "📉", "var(--bad)"),
+    statCard(stats.slaList.length, "พนักงานที่ Onboarding เกิน 120 วัน", "⏰", "var(--warn)"),
+    statCard(stats.total, "พนักงานทั้งหมดในระบบ", "👥", "var(--charcoal)"),
+  ]));
+
+  wrap.appendChild(el("div",{class:"section-title"}, "พนักงานที่ Onboarding นานเกินกำหนด (เกิน SLA 120 วัน)"));
+  if(!stats.slaList.length){
+    wrap.appendChild(el("div",{class:"empty-state"},[el("div",{class:"big"},"✅"), el("div",{},"ไม่มีพนักงานที่ติด SLA ในขณะนี้")]));
+  } else {
+    wrap.appendChild(el("table",{class:"kpi-table"},[
+      el("tr",{},[el("th",{},"ชื่อ"),el("th",{},"ตำแหน่ง"),el("th",{},"แผนก"),el("th",{},"จำนวนวันที่เริ่มงานแล้ว"),el("th",{},"ความคืบหน้า")]),
+      ...stats.slaList.map(r=> el("tr",{},[
+        el("td",{},r.name||"-"), el("td",{},r.position||"-"), el("td",{},r.department||"-"),
+        el("td",{},String(r.days)), el("td",{},r.prog+"%")
+      ]))
+    ]));
+  }
+
+  wrap.appendChild(el("div",{class:"section-title"}, "ส่งออกรายงาน"));
+  wrap.appendChild(el("div",{class:"card", style:"display:flex;gap:10px;flex-wrap:wrap;"},[
+    el("button",{class:"btn btn-primary", onclick:()=>{
+      const emps = Object.values(state.employees);
+      const rows = [["ชื่อ","ชื่อเล่น","รหัสพนักงาน","ตำแหน่ง","แผนก","สถานะ","วันเริ่มงาน","ความคืบหน้า Onboarding (%)","หัวหน้างาน","พี่เลี้ยง"]];
+      emps.forEach(e=> rows.push([e.name,e.nickname,e.code,e.position,e.department,employeeOverallStatusLabel(e).label,fmtDate(e.startDate),portalOverallProgress(e),e.manager,e.buddy]));
+      downloadCsv("hrod_employees_"+todayStr()+".csv", rows);
+    }}, "⬇️ ส่งออกรายชื่อพนักงาน (CSV)"),
+    el("button",{class:"btn", onclick:()=>{
+      const rows = [["ชื่อ","ตำแหน่ง","แผนก","จำนวนวันที่เริ่มงานแล้ว","ความคืบหน้า (%)"]];
+      stats.slaList.forEach(r=> rows.push([r.name,r.position,r.department,r.days,r.prog]));
+      downloadCsv("hrod_sla_"+todayStr()+".csv", rows);
+    }}, "⬇️ ส่งออกรายชื่อที่ติด SLA (CSV)")
+  ]));
+  return wrap;
+}
+
+function renderHrSettingsTab(){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"section-title"}, "การเชื่อมต่อฐานข้อมูล"));
+  wrap.appendChild(el("div",{class:"card"},[
+    el("div",{style:"font-size:13.5px;margin-bottom:10px;"},
+      state.apiConfigured
+        ? (state.dbReady ? "✅ เชื่อมต่อ Google Sheets สำเร็จ และกำลังอัปเดตข้อมูลแบบใกล้เคียงเรียลไทม์ (ทุก 4 วินาที)" : "⚠️ ตั้งค่า URL ไว้แล้ว แต่เชื่อมต่อไม่สำเร็จ: "+(state.apiError||"ไม่ทราบสาเหตุ"))
+        : "❗ ยังไม่ได้ตั้งค่า Apps Script API URL — ข้อมูลจะไม่ถูกบันทึกถาวร"),
+    el("button",{class:"btn btn-primary", onclick: openSettingsModal}, "⚙️ ตั้งค่าฐานข้อมูล")
+  ]));
+
+  wrap.appendChild(el("div",{class:"section-title"}, "ข้อมูลระบบ"));
+  wrap.appendChild(el("div",{class:"dash-grid"},[
+    statCard(Object.keys(state.employees).length, "พนักงานทั้งหมด", "👥", "var(--charcoal)"),
+    statCard(getSupervisorNames().length, "หัวหน้างาน/พี่เลี้ยงที่พบในระบบ", "🧑‍🤝‍🧑", "var(--brand)"),
+    statCard(Object.keys(state.config||{}).length, "รายการตั้งค่าที่ HR ปรับแก้แล้ว", "🧩", "var(--brand-green)"),
+  ]));
+
+  wrap.appendChild(el("div",{class:"section-title"}, "เกี่ยวกับระบบ"));
+  wrap.appendChild(el("div",{class:"card"},[
+    el("div",{style:"font-size:13px;line-height:1.7;color:var(--sub);"},[
+      el("div",{},"HROD — ระบบ Onboarding & Offboarding สำหรับ ALLIED-TEK"),
+      el("div",{},"ข้อมูลเก็บอยู่ใน Google Sheet ของบริษัท ผ่าน Google Apps Script Web App — ดูขั้นตอนตั้งค่าใน README.md ของโปรเจกต์บน GitHub"),
+    ])
+  ]));
+  return wrap;
+}
+
+function renderHrUserRoleTab(){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "รายชื่อหัวหน้างาน/พี่เลี้ยงที่ใช้อ้างอิงใน Supervisor Portal (ยังไม่มีระบบ login/รหัสผ่านจริง) — เพิ่มชื่อไว้ล่วงหน้าได้ก่อนที่จะมีพนักงานอ้างอิงถึง ส่วนชื่อที่ \"พบจากข้อมูลพนักงาน\" มาจากช่องหัวหน้างาน/พี่เลี้ยงของพนักงานแต่ละคนโดยตรง ลบออกจากตรงนี้ไม่ได้ ต้องไปแก้ที่ข้อมูลพนักงานแทน"));
+
+  const configured = new Set(getConfiguredSupervisorNames());
+  const allNames = getSupervisorNames();
+  const countFor = (name)=> Object.values(state.employees).filter(e=> e.manager===name || e.buddy===name).length;
+
+  wrap.appendChild(el("table",{class:"kpi-table"},[
+    el("tr",{},[el("th",{},"ชื่อ"),el("th",{},"ที่มา"),el("th",{},"จำนวนพนักงานในทีม"),el("th",{},"")]),
+    ...allNames.map(name=> el("tr",{},[
+      el("td",{},name),
+      el("td",{}, configured.has(name) ? "กำหนดเอง" : "พบจากข้อมูลพนักงาน"),
+      el("td",{}, String(countFor(name))),
+      el("td",{}, configured.has(name) ? el("button",{class:"del-btn", title:"ลบชื่อนี้", onclick:()=>{
+        const next = getConfiguredSupervisorNames().filter(n=>n!==name);
+        saveConfig("supervisorNames", next);
+      }}, "✕") : "")
+    ]))
+  ]));
+
+  let newName="";
+  const nameInput = el("input",{placeholder:"ชื่อหัวหน้างาน/พี่เลี้ยงคนใหม่...", oninput:(e)=>newName=e.target.value});
+  wrap.appendChild(el("div",{class:"card", style:"margin-top:14px;display:flex;gap:8px;align-items:flex-end;"},[
+    el("div",{class:"field", style:"flex:1;"},[el("label",{},"เพิ่มชื่อใหม่"), nameInput]),
+    el("button",{class:"btn btn-primary", onclick:()=>{
+      if(!newName.trim()) return;
+      const next = [...getConfiguredSupervisorNames(), newName.trim()];
+      saveConfig("supervisorNames", next);
+      nameInput.value=""; newName="";
+    }}, "+ เพิ่ม")
+  ]));
+
+  wrap.appendChild(el("div",{class:"section-title"}, "มุมมองการใช้งาน (Role) ที่มีในระบบ"));
+  wrap.appendChild(el("div",{class:"biz-grid"}, Object.entries(ROLE_LABEL).map(([v,l])=>
+    el("div",{class:"biz-card"},[ el("b",{},l), el("span",{}, v==="hr"?"เข้าถึง HR Admin Portal ทั้งหมด" : v==="manager"?"เข้าถึง Supervisor Portal เฉพาะทีมตัวเอง" : "เข้าถึง Employee Portal ของตัวเอง") ])
+  )));
+  return wrap;
+}
+
 function ppRow(label,val){ return el("tr",{},[el("td",{class:"pp-label"},label), el("td",{},val)]); }
 function ppConnRow(who,name,phone){ return el("tr",{},[el("td",{},who), el("td",{},name||"-"), el("td",{},phone||"-")]); }
 
@@ -1319,7 +1685,7 @@ function renderPassportTab(emp, id){
   return wrap;
 }
 
-const KPI_ROWS = [
+const KPI_ROWS_DEFAULT = [
   ["1. ทักษะทางเทคนิคและการปฏิบัติงานจริง", "100%", "ใบตรวจรับงาน / รายการติดตั้งหน้างาน (Checklist), การสุ่มตรวจความเรียบร้อยและความปลอดภัยหน้างาน, สภาพความพร้อมใช้งานของเครื่องมือช่าง"],
   ["2. ความรู้และการวิเคราะห์แก้ปัญหาหน้างาน", "> 70%", "รายงานการแก้ไขปัญหา/อาการเสีย, แบบทดสอบความรู้หรือการให้ทดลองหน้างาน"],
   ["3. การวางแผนและการควบคุมงาน", "ภายในวันสุดท้ายของทุกสัปดาห์", "แผนการทำงานส่วนบุคคล, อัตราการส่งมอบงานตรงเวลา, รายงานสรุปผลการทำงานประจำสัปดาห์/เดือน"],
@@ -1331,7 +1697,7 @@ function renderKpiTab(emp, id){
   wrap.appendChild(el("div",{class:"lock-note"}, "งานนี้วัดว่าดีหรือไม่ดียังไง (ถาม-ตอบได้วันที่ 30 และ 75–90) — หัวหน้างานเป็นผู้กำหนด ตัวชี้วัดนี้อ้างอิงตามตำแหน่งงานปัจจุบัน ปรับแก้ได้ตามตำแหน่งของพนักงานแต่ละคน"));
   wrap.appendChild(el("table",{class:"kpi-table"},[
     el("tr",{},[el("th",{},"ตัววัด"),el("th",{},"เป้าช่วงทดลองงาน"),el("th",{},"ดูจากที่ไหน")]),
-    ...KPI_ROWS.map(r=> el("tr",{}, r.map(c=> el("td",{}, c))))
+    ...getKpiRows().map(r=> el("tr",{}, r.map(c=> el("td",{}, c))))
   ]));
   wrap.appendChild(el("div",{class:"card",style:"margin-top:16px;"},[
     el("div",{class:"field"},[
@@ -1431,10 +1797,10 @@ function renderOnboardingTab(emp, id){
   const canEdit = state.role==="hr" || state.role==="manager";
   const wrap = el("div",{});
   if(!canEdit) wrap.appendChild(el("div",{class:"lock-note"}, "มุมมองพนักงานใหม่: ดูสถานะ checklist ได้ แต่การติ๊กสำเร็จให้หัวหน้างาน/พี่เลี้ยง หรือ HR เป็นผู้บันทึก"));
-  const onb = emp.onboarding || makeItemsFromTemplate(ONB_TEMPLATE);
-  Object.keys(ONB_TEMPLATE).forEach(pk=>{
+  const onb = emp.onboarding || makeItemsFromTemplate(getOnbTemplate());
+  Object.keys(getOnbTemplate()).forEach(pk=>{
     const items = onb[pk] || [];
-    wrap.appendChild(renderChecklistPhase(pk, ONB_TEMPLATE[pk], items, (newItems)=>{
+    wrap.appendChild(renderChecklistPhase(pk, getOnbTemplate()[pk], items, (newItems)=>{
       const next = {...onb, [pk]: newItems};
       saveEmployee(id, {onboarding: next});
     }, canEdit));
@@ -1444,7 +1810,7 @@ function renderOnboardingTab(emp, id){
 
 function renderOffboardingTab(emp, id){
   const canEdit = state.role==="hr";
-  const off = emp.offboarding || { items: makeItemsFromTemplate(OFF_TEMPLATE), lastWorkDate:"", reason:"", exitSummary:"" };
+  const off = emp.offboarding || { items: makeItemsFromTemplate(getOffTemplate()), lastWorkDate:"", reason:"", exitSummary:"" };
   const wrap = el("div",{});
   wrap.appendChild(el("div",{class:"card"},[
     el("div",{class:"field-grid"},[
@@ -1457,9 +1823,9 @@ function renderOffboardingTab(emp, id){
     ])
   ]));
   if(!canEdit) wrap.appendChild(el("div",{class:"lock-note", style:"margin-top:12px;"}, "มุมมองนี้ดูข้อมูลได้อย่างเดียว"));
-  Object.keys(OFF_TEMPLATE).forEach(ck=>{
+  Object.keys(getOffTemplate()).forEach(ck=>{
     const items = off.items?.[ck] || [];
-    wrap.appendChild(renderChecklistPhase(ck, OFF_TEMPLATE[ck], items, (newItems)=>{
+    wrap.appendChild(renderChecklistPhase(ck, getOffTemplate()[ck], items, (newItems)=>{
       const next = {...off, items: {...off.items, [ck]: newItems}};
       saveEmployee(id, {offboarding: next});
     }, canEdit));
@@ -1612,7 +1978,7 @@ function openOffboardModal(id){
       el("button",{class:"btn btn-danger", onclick: async ()=>{
         await saveEmployee(id, {
           status: "offboarding",
-          offboarding: { started:true, items: makeItemsFromTemplate(OFF_TEMPLATE), lastWorkDate, reason, exitSummary:"" }
+          offboarding: { started:true, items: makeItemsFromTemplate(getOffTemplate()), lastWorkDate, reason, exitSummary:"" }
         });
         state.activeTab = "offboarding";
         closeModal();

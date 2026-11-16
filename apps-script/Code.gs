@@ -17,6 +17,12 @@
  *   C: updatedAt (ISO timestamp, set by this script)
  * The sheet is created automatically on first write if it doesn't exist.
  *
+ * A second sheet named "config" holds small shared, app-wide settings that
+ * HR edits from the HR Admin Portal — the onboarding/offboarding checklist
+ * templates, the KPI table, the Learning Center content, and the list of
+ * supervisor/buddy names. Same shape as "employees" (key, json, updatedAt),
+ * created automatically on first write.
+ *
  * Security note: with "Who has access: Anyone", anyone who has this exact
  * URL can read and write every row in the sheet (there is no login).
  * That's the trade-off for a simple, no-backend, no-auth setup. Keep the
@@ -25,12 +31,13 @@
  */
 
 var SHEET_NAME = 'employees';
+var CONFIG_SHEET_NAME = 'config';
 
 function doGet(e) {
   try {
     var action = (e && e.parameter && e.parameter.action) || 'list';
     if (action === 'list') {
-      return jsonResponse({ ok: true, employees: listEmployees() });
+      return jsonResponse({ ok: true, employees: listEmployees(), config: listConfig() });
     }
     return jsonResponse({ ok: false, error: 'unknown action: ' + action });
   } catch (err) {
@@ -43,11 +50,15 @@ function doPost(e) {
     var body = JSON.parse(e.postData.contents);
     var action = body.action;
     if (action === 'set') {
-      upsertEmployee(body.id, body.data);
+      upsertRow_(getSheet_(), body.id, body.data);
       return jsonResponse({ ok: true });
     }
     if (action === 'delete') {
-      deleteEmployee(body.id);
+      deleteRow_(getSheet_(), body.id);
+      return jsonResponse({ ok: true });
+    }
+    if (action === 'setConfig') {
+      upsertRow_(getConfigSheet_(), body.key, body.data);
       return jsonResponse({ ok: true });
     }
     return jsonResponse({ ok: false, error: 'unknown action: ' + action });
@@ -64,6 +75,29 @@ function getSheet_() {
     sheet.appendRow(['id', 'json', 'updatedAt']);
   }
   return sheet;
+}
+
+function getConfigSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(CONFIG_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG_SHEET_NAME);
+    sheet.appendRow(['key', 'json', 'updatedAt']);
+  }
+  return sheet;
+}
+
+function listConfig() {
+  var sheet = getConfigSheet_();
+  var values = sheet.getDataRange().getValues();
+  var out = {};
+  for (var i = 1; i < values.length; i++) {
+    var key = values[i][0];
+    var json = values[i][1];
+    if (!key) continue;
+    try { out[String(key)] = JSON.parse(json); } catch (parseErr) { /* skip bad row */ }
+  }
+  return out;
 }
 
 function listEmployees() {
@@ -92,9 +126,8 @@ function findRow_(sheet, id) {
   return -1;
 }
 
-function upsertEmployee(id, data) {
+function upsertRow_(sheet, id, data) {
   if (!id) throw new Error('missing id');
-  var sheet = getSheet_();
   var row = findRow_(sheet, id);
   var json = JSON.stringify(data);
   var now = new Date().toISOString();
@@ -106,8 +139,7 @@ function upsertEmployee(id, data) {
   }
 }
 
-function deleteEmployee(id) {
-  var sheet = getSheet_();
+function deleteRow_(sheet, id) {
   var row = findRow_(sheet, id);
   if (row !== -1) sheet.deleteRow(row);
 }
