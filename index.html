@@ -7,12 +7,30 @@
 <style>
   :root{
     --bg:#f6f7f9; --panel:#ffffff; --ink:#1b1f24; --sub:#6b7280;
-    --line:#e5e7eb; --brand:#0f766e; --brand-ink:#ffffff;
-    --accent:#2563eb; --warn:#b45309; --bad:#b91c1c; --good:#15803d;
-    --chip:#eef2f3;
+    --line:#e5e7eb;
+    --brand:#c0272d; --brand-dark:#8f1c21; --brand-ink:#ffffff;
+    --brand-light:#fbe9e9; --brand-green:#3f9142; --brand-green-light:#e8f5e9;
+    --charcoal:#3f3f3f;
+    --accent:#2563eb; --warn:#b45309; --bad:#b91c1c; --good:#2f7d35;
+    --chip:#f3f0ee;
   }
   *{box-sizing:border-box;}
-  body{margin:0;font-family:"Sarabun","Noto Sans Thai","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink);}
+  body{margin:0;font-family:"Sarabun","Noto Sans Thai","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink);animation:fadeIn .35s ease;}
+  @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+  @keyframes panelIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes stampPop{from{opacity:0;transform:scale(.6) rotate(-14deg);}to{opacity:1;transform:scale(1) rotate(-8deg);}}
+  .content{animation:panelIn .28s ease;}
+  .tab-panel{animation:panelIn .28s ease;}
+  .emp-item{transition:background-color .15s ease, border-color .15s ease, transform .15s ease;}
+  .emp-item:active{transform:scale(.99);}
+  .btn{transition:background-color .15s ease, transform .1s ease, box-shadow .15s ease;}
+  .btn:active{transform:scale(.97);}
+  .btn-primary{box-shadow:0 1px 2px rgba(192,39,45,.25);}
+  .tab{transition:color .15s ease, border-color .2s ease;}
+  .progress-fill{transition:width .5s ease;}
+  .nav-link{transition:background-color .15s ease, color .15s ease;}
+  .policy-card,.biz-card,.card{transition:box-shadow .2s ease, transform .15s ease;}
+  .biz-card:hover,.policy-card:hover{box-shadow:0 4px 14px rgba(0,0,0,.06);transform:translateY(-1px);}
   .app{display:flex;min-height:100vh;}
   .sidebar{width:280px;flex:0 0 280px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;}
   .sidebar-head{padding:18px 16px 12px;border-bottom:1px solid var(--line);}
@@ -27,7 +45,7 @@
   .emp-list{flex:1;overflow-y:auto;padding:4px 10px 12px;}
   .emp-item{padding:10px 10px;border-radius:10px;cursor:pointer;margin-bottom:4px;border:1px solid transparent;}
   .emp-item:hover{background:var(--chip);}
-  .emp-item.active{background:#e6f4f2;border-color:var(--brand);}
+  .emp-item.active{background:var(--brand-light);border-color:var(--brand);}
   .emp-name{font-weight:600;font-size:14px;}
   .emp-meta{font-size:12px;color:var(--sub);margin-top:2px;}
   .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600;margin-top:5px;}
@@ -39,7 +57,7 @@
   .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:13px;font-weight:600;cursor:pointer;}
   .btn:hover{background:var(--chip);}
   .btn-primary{background:var(--brand);color:var(--brand-ink);border-color:var(--brand);}
-  .btn-primary:hover{background:#0c5f58;}
+  .btn-primary:hover{background:var(--brand-dark);}
   .btn-danger{background:#fff;color:var(--bad);border-color:#fecaca;}
   .btn-danger:hover{background:#fef2f2;}
   .btn-block{width:100%;justify-content:center;}
@@ -50,8 +68,23 @@
   .content{flex:1;padding:24px 28px;overflow-y:auto;}
   .dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px;}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;}
+  .stat-card{position:relative;padding-left:20px;overflow:hidden;}
+  .stat-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--stat-c,var(--brand));}
+  .stat-icon{font-size:18px;margin-bottom:6px;display:block;}
   .stat-num{font-size:26px;font-weight:700;}
   .stat-label{font-size:12px;color:var(--sub);margin-top:4px;}
+  .dash-row{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:22px;}
+  @media (max-width:900px){.dash-row{grid-template-columns:1fr;}}
+  .bar-item{margin-bottom:12px;}
+  .bar-item:last-child{margin-bottom:0;}
+  .bar-item .bar-head{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px;}
+  .bar-item .bar-head b{font-weight:700;}
+  .bar-track{height:9px;background:var(--chip);border-radius:5px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:5px;transition:width .6s ease;}
+  .ring-wrap{display:flex;align-items:center;gap:18px;}
+  .ring{width:96px;height:96px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;position:relative;transition:background .5s ease;}
+  .ring::after{content:"";position:absolute;inset:9px;background:var(--panel);border-radius:50%;}
+  .ring-num{position:relative;z-index:1;font-size:19px;font-weight:800;color:var(--brand-dark);}
   .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px;flex-wrap:wrap;}
   .tab{padding:9px 14px;font-size:13px;font-weight:600;color:var(--sub);cursor:pointer;border-bottom:2px solid transparent;}
   .tab.active{color:var(--brand);border-color:var(--brand);}
@@ -108,30 +141,40 @@
   .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px;}
   .lock-note{font-size:12px;color:var(--sub);background:var(--chip);border-radius:8px;padding:8px 12px;margin-bottom:12px;}
   .scrollx{overflow-x:auto;}
-  .passport-wrap{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;}
-  .passport-header{background:linear-gradient(135deg,#0f766e,#134e4a);color:#fff;padding:26px 30px;}
-  .passport-header .pp-brand{font-size:20px;font-weight:800;letter-spacing:1px;display:flex;align-items:center;gap:12px;}
-  .passport-header .pp-brand img{height:42px;width:auto;background:#fff;border-radius:8px;padding:4px 8px;}
+  .passport-wrap{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 8px 28px rgba(63,16,18,.12);position:relative;}
+  .passport-header{position:relative;overflow:hidden;background:linear-gradient(135deg,var(--brand),var(--brand-dark));color:#fff;padding:28px 30px 24px;}
+  .passport-header::before{content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(circle at 88% -10%, rgba(255,255,255,.15) 0, transparent 45%),
+      repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 10px, transparent 10px 20px);
+    pointer-events:none;}
+  .passport-header .pp-brand{position:relative;font-size:20px;font-weight:800;letter-spacing:1px;display:flex;align-items:center;gap:12px;}
+  .passport-header .pp-brand img{height:42px;width:auto;background:#fff;border-radius:8px;padding:4px 8px;box-shadow:0 2px 6px rgba(0,0,0,.2);}
   .passport-header .pp-brand small{display:block;font-weight:400;font-size:12px;opacity:.85;margin-top:2px;letter-spacing:0;}
-  .passport-header .pp-title{margin-top:14px;font-size:22px;font-weight:700;}
-  .passport-header .pp-sub{font-size:13px;opacity:.9;margin-top:2px;}
-  .passport-body{padding:24px 30px;}
-  .pp-table{width:100%;border-collapse:collapse;margin-bottom:20px;}
+  .passport-header .pp-title{position:relative;margin-top:16px;font-size:23px;font-weight:800;letter-spacing:.4px;}
+  .passport-header .pp-sub{position:relative;font-size:13px;opacity:.92;margin-top:2px;letter-spacing:.3px;}
+  .passport-body{padding:26px 30px;position:relative;}
+  .passport-body::before{content:"ALLIED-TEK";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:92px;font-weight:800;color:var(--brand);opacity:.025;letter-spacing:4px;transform:rotate(-18deg);
+    pointer-events:none;white-space:nowrap;z-index:0;}
+  .passport-body > *{position:relative;z-index:1;}
+  .pp-table{width:100%;border-collapse:collapse;margin-bottom:20px;border-radius:8px;overflow:hidden;}
   .pp-table td{border:1px solid var(--line);padding:9px 12px;font-size:13.5px;vertical-align:top;}
-  .pp-table td.pp-label{background:#f3f6f6;font-weight:700;width:190px;color:#134e4a;}
-  .pp-section-h{font-size:14px;font-weight:800;color:#0f766e;margin:22px 0 10px;border-bottom:2px solid #0f766e;padding-bottom:6px;}
-  .pp-conn-table{width:100%;border-collapse:collapse;margin-bottom:18px;}
-  .pp-conn-table th{background:#0f766e;color:#fff;font-size:12px;padding:8px 10px;text-align:left;}
+  .pp-table td.pp-label{background:var(--brand-light);font-weight:700;width:190px;color:var(--brand-dark);}
+  .pp-section-h{font-size:14px;font-weight:800;color:var(--brand);margin:22px 0 10px;border-bottom:2px solid var(--brand);padding-bottom:6px;letter-spacing:.2px;}
+  .pp-conn-table{width:100%;border-collapse:collapse;margin-bottom:18px;border-radius:8px;overflow:hidden;}
+  .pp-conn-table th{background:var(--brand);color:#fff;font-size:12px;padding:8px 10px;text-align:left;}
   .pp-conn-table td{border:1px solid var(--line);padding:9px 10px;font-size:13px;}
   .pp-stamps{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;}
-  .pp-stamp{width:130px;text-align:center;padding:14px 8px;border:2px dashed var(--line);border-radius:12px;font-size:12px;color:var(--sub);}
-  .pp-stamp.done{border-color:#0f766e;color:#0f766e;background:#ecfaf8;font-weight:700;}
+  .pp-stamp{width:130px;text-align:center;padding:14px 8px;border:2px dashed var(--line);border-radius:12px;font-size:12px;color:var(--sub);transition:transform .15s ease;}
+  .pp-stamp.done{border:2px solid var(--brand-green);color:var(--brand-green);background:var(--brand-green-light);font-weight:700;transform:rotate(-2deg);box-shadow:0 2px 6px rgba(63,145,66,.18);animation:stampPop2 .3s ease;}
+  @keyframes stampPop2{from{opacity:0;transform:scale(.7) rotate(-10deg);}to{opacity:1;transform:scale(1) rotate(-2deg);}}
   .pp-stamp .pp-stamp-icon{font-size:26px;display:block;margin-bottom:4px;}
   .pp-sign-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-top:26px;}
   .pp-sign-box{border-top:1px dashed var(--sub);padding-top:8px;font-size:12px;color:var(--sub);text-align:center;}
   .pp-print-btn{margin-bottom:14px;}
   @media print{ .sidebar,.topbar,.tabs,.pp-print-btn{display:none !important;} .content{padding:0 !important;} }
-  .nav-link{display:block;margin:0 16px 10px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:700;color:var(--brand);background:#e6f4f2;cursor:pointer;border:1px solid transparent;}
+  .nav-link{display:block;margin:0 16px 10px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:700;color:var(--brand);background:var(--brand-light);cursor:pointer;border:1px solid transparent;}
   .nav-link:hover{border-color:var(--brand);}
   .nav-link.active{background:var(--brand);color:#fff;}
   .policy-card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:18px;}
@@ -142,7 +185,7 @@
   .biz-card b{color:var(--brand);display:block;margin-bottom:4px;font-size:13.5px;}
   .biz-card span{font-size:12.5px;color:var(--sub);}
   .kpi-table{width:100%;border-collapse:collapse;margin-top:10px;}
-  .kpi-table th{background:#0f766e;color:#fff;font-size:12px;padding:8px 10px;text-align:left;}
+  .kpi-table th{background:var(--brand);color:#fff;font-size:12px;padding:8px 10px;text-align:left;}
   .kpi-table td{border:1px solid var(--line);padding:9px 10px;font-size:12.5px;vertical-align:top;}
   @media (max-width:800px){
     .sidebar{display:none;}
@@ -421,16 +464,21 @@ function startPolling(){
 async function refreshEmployees(){
   try{
     const list = await apiList();
-    state.employees = {};
-    list.forEach(row=>{ state.employees[row.id] = row.data; });
+    const next = {};
+    list.forEach(row=>{ next[row.id] = row.data; });
+    const changed = JSON.stringify(next) !== JSON.stringify(state.employees);
+    state.employees = next;
     if(!state.selectedId){
       const ids = Object.keys(state.employees);
       if(ids.length) state.selectedId = ids[0];
     }
+    const wasLoading = state.loading, wasReady = state.dbReady, hadErr = state.apiError;
     state.loading = false;
     state.dbReady = true;
     state.apiError = "";
-    render();
+    // Skip re-rendering (and re-playing entrance animations) when nothing actually
+    // changed — avoids a visible flicker every poll cycle (~4s).
+    if(changed || wasLoading || !wasReady || hadErr) render();
   }catch(e){
     state.loading = false;
     state.dbReady = false;
@@ -606,21 +654,61 @@ function renderTopbarActions(emp){
 function renderDashboard(){
   const emps = Object.values(state.employees);
   const counts = { onboarding:0, active:0, offboarding:0, terminated:0 };
+  let progSum = 0, progN = 0;
   emps.forEach(e=>{
     const st = employeeOverallStatusLabel(e);
     if(e.status==="offboarding") counts.offboarding++;
     else if(e.status==="terminated") counts.terminated++;
     else if(st.label.includes("เสร็จ")) counts.active++;
     else counts.onboarding++;
+    if(e.status!=="terminated"){
+      const phases=["phase1","phase2","phase3","phase4"];
+      const allItems = phases.flatMap(p=> (e.onboarding && e.onboarding[p]) || []);
+      if(allItems.length){ progSum += phaseProgress(allItems); progN++; }
+    }
   });
+  const avgProg = progN ? Math.round(progSum/progN) : 0;
+
   const wrap = el("div",{});
   wrap.appendChild(el("div",{class:"dash-grid"},[
-    statCard(emps.length, "พนักงานทั้งหมดในระบบ"),
-    statCard(counts.onboarding, "กำลัง Onboard"),
-    statCard(counts.active, "ผ่านทดลองงานแล้ว"),
-    statCard(counts.offboarding, "กำลัง Offboard"),
-    statCard(counts.terminated, "ออกจากงานแล้ว"),
+    statCard(emps.length, "พนักงานทั้งหมดในระบบ", "👥", "var(--charcoal)"),
+    statCard(counts.onboarding, "กำลัง Onboard", "🚀", "var(--warn)"),
+    statCard(counts.active, "ผ่านทดลองงานแล้ว", "✅", "var(--brand-green)"),
+    statCard(counts.offboarding, "กำลัง Offboard", "📤", "var(--brand)"),
+    statCard(counts.terminated, "ออกจากงานแล้ว", "🏁", "var(--sub)"),
   ]));
+
+  if(emps.length){
+    const barData = [
+      ["กำลัง Onboard", counts.onboarding, "var(--warn)"],
+      ["ผ่านทดลองงานแล้ว", counts.active, "var(--brand-green)"],
+      ["กำลัง Offboard", counts.offboarding, "var(--brand)"],
+      ["ออกจากงานแล้ว", counts.terminated, "var(--sub)"],
+    ];
+    const total = emps.length || 1;
+    const ringPct = avgProg;
+    const ringColor = ringPct>=100 ? "var(--brand-green)" : "var(--brand)";
+    wrap.appendChild(el("div",{class:"dash-row"},[
+      el("div",{class:"card"},[
+        el("div",{class:"section-title",style:"margin-top:0;"},"สัดส่วนพนักงานตามสถานะ"),
+        el("div",{}, barData.map(([label,n,color])=> el("div",{class:"bar-item"},[
+          el("div",{class:"bar-head"},[ el("span",{},label), el("b",{}, String(n)+" คน") ]),
+          el("div",{class:"bar-track"},[ el("div",{class:"bar-fill", style:`width:${Math.round(n/total*100)}%;background:${color};`}) ])
+        ])))
+      ]),
+      el("div",{class:"card"},[
+        el("div",{class:"section-title",style:"margin-top:0;"},"ความคืบหน้า Onboarding เฉลี่ย"),
+        el("div",{class:"ring-wrap"},[
+          el("div",{class:"ring", style:`background:conic-gradient(${ringColor} ${ringPct*3.6}deg, var(--chip) 0deg);`},[
+            el("div",{class:"ring-num"}, ringPct+"%")
+          ]),
+          el("div",{style:"font-size:12.5px;color:var(--sub);line-height:1.6;"},
+            progN ? `เฉลี่ยจากพนักงานที่กำลังอยู่ในระบบ ${progN} คน (ไม่รวมพนักงานที่ออกจากงานแล้ว)` : "ยังไม่มีข้อมูลความคืบหน้า Onboarding")
+        ])
+      ])
+    ]));
+  }
+
   if(!state.apiConfigured){
     wrap.appendChild(el("div",{class:"lock-note"}, "ยังไม่ได้ตั้งค่า Apps Script API URL — กด \"⚙️ ตั้งค่าฐานข้อมูล\" ที่แถบด้านซ้ายก่อน ไม่งั้นข้อมูลจะไม่ถูกบันทึกถาวร (ดูขั้นตอนใน README.md)"));
   } else if(!state.dbReady){
@@ -636,8 +724,11 @@ function renderDashboard(){
   }
   return wrap;
 }
-function statCard(num, label){
-  return el("div",{class:"card"},[ el("div",{class:"stat-num"}, String(num)), el("div",{class:"stat-label"}, label) ]);
+function statCard(num, label, icon, color){
+  return el("div",{class:"card stat-card", style: color? `--stat-c:${color};` : ""},[
+    icon ? el("span",{class:"stat-icon"}, icon) : null,
+    el("div",{class:"stat-num"}, String(num)), el("div",{class:"stat-label"}, label)
+  ]);
 }
 
 /* ---------- EMPLOYEE DETAIL ---------- */
@@ -659,12 +750,14 @@ function renderEmployeeDetail(emp, id){
   }, t.label)));
   wrap.appendChild(tabBar);
 
-  if(state.activeTab==="info") wrap.appendChild(renderInfoTab(emp, id));
-  else if(state.activeTab==="passport") wrap.appendChild(renderPassportTab(emp, id));
-  else if(state.activeTab==="onboarding") wrap.appendChild(renderOnboardingTab(emp, id));
-  else if(state.activeTab==="reflect") wrap.appendChild(renderReflectTab(emp, id));
-  else if(state.activeTab==="offboarding") wrap.appendChild(renderOffboardingTab(emp, id));
-  else if(state.activeTab==="kpi") wrap.appendChild(renderKpiTab(emp, id));
+  const panel = el("div",{class:"tab-panel"});
+  if(state.activeTab==="info") panel.appendChild(renderInfoTab(emp, id));
+  else if(state.activeTab==="passport") panel.appendChild(renderPassportTab(emp, id));
+  else if(state.activeTab==="onboarding") panel.appendChild(renderOnboardingTab(emp, id));
+  else if(state.activeTab==="reflect") panel.appendChild(renderReflectTab(emp, id));
+  else if(state.activeTab==="offboarding") panel.appendChild(renderOffboardingTab(emp, id));
+  else if(state.activeTab==="kpi") panel.appendChild(renderKpiTab(emp, id));
+  wrap.appendChild(panel);
   return wrap;
 }
 
