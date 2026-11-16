@@ -187,6 +187,39 @@
   .kpi-table{width:100%;border-collapse:collapse;margin-top:10px;}
   .kpi-table th{background:var(--brand);color:#fff;font-size:12px;padding:8px 10px;text-align:left;}
   .kpi-table td{border:1px solid var(--line);padding:9px 10px;font-size:12.5px;vertical-align:top;}
+
+  /* ---------- LOGIN PAGE ---------- */
+  .login-screen{min-height:100vh;width:100%;display:flex;flex-wrap:wrap;background:#faf7f6;animation:fadeIn .35s ease;}
+  .login-brand{flex:1 1 480px;min-width:320px;min-height:420px;position:relative;overflow:hidden;
+    background:linear-gradient(145deg,var(--brand) 0%,var(--brand-dark) 100%);
+    display:flex;flex-direction:column;justify-content:space-between;padding:56px;box-sizing:border-box;color:#fff;}
+  .login-brand::before{content:"ALLIED-TEK";position:absolute;inset:0;opacity:.07;display:flex;align-items:center;
+    justify-content:center;transform:rotate(-16deg);font-size:160px;font-weight:800;letter-spacing:6px;white-space:nowrap;pointer-events:none;}
+  .login-logo-row{position:relative;display:flex;align-items:center;gap:14px;z-index:1;}
+  .login-logo-box{width:48px;height:48px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 14px rgba(0,0,0,.18);}
+  .login-logo-box img{width:34px;height:34px;object-fit:contain;}
+  .login-head h1{margin:0 0 16px;font-size:34px;font-weight:800;line-height:1.3;position:relative;z-index:1;}
+  .login-head p{margin:0;font-size:15px;line-height:1.75;opacity:.9;max-width:420px;position:relative;z-index:1;}
+  .login-tags{position:relative;z-index:1;display:flex;gap:28px;flex-wrap:wrap;}
+  .login-tags span{display:flex;align-items:center;gap:8px;font-size:13px;opacity:.9;}
+  .login-tags span::before{content:"";width:8px;height:8px;border-radius:50%;background:#fff;display:inline-block;}
+  .login-panel{flex:1 1 480px;min-width:320px;display:flex;align-items:center;justify-content:center;padding:56px 32px;box-sizing:border-box;}
+  .login-form{width:100%;max-width:380px;display:flex;flex-direction:column;gap:22px;}
+  .login-form h2{margin:0;font-size:24px;font-weight:800;color:#2b2b2b;}
+  .login-form .sub{margin:0;font-size:13.5px;color:#7a7470;}
+  .login-field{display:flex;flex-direction:column;gap:7px;}
+  .login-field label{font-size:13px;font-weight:600;color:var(--charcoal);}
+  .login-input{box-sizing:border-box;width:100%;padding:12px 14px;font-size:14.5px;border:1px solid #e3dcda;border-radius:10px;background:#fff;color:#2b2b2b;}
+  .login-input:focus{outline:2px solid var(--brand);outline-offset:1px;border-color:var(--brand);}
+  .login-remember{display:flex;align-items:center;gap:8px;font-size:13px;color:#5a5551;cursor:pointer;}
+  .login-remember input{accent-color:var(--brand);width:16px;height:16px;}
+  .login-btn{width:100%;padding:13px 0;font-size:15px;font-weight:700;color:#fff;background:var(--brand);border:none;border-radius:10px;cursor:pointer;box-shadow:0 8px 18px rgba(192,39,45,.28);}
+  .login-btn:hover{background:var(--brand-dark);}
+  .login-error{margin-top:-8px;padding:10px 12px;border-radius:10px;background:#fde3e3;border:1px solid #f0b7b7;font-size:12.5px;color:#8f1c21;}
+  .login-demo{margin-top:2px;padding:12px 14px;border-radius:10px;background:var(--brand-light);border:1px solid #f0c9c9;font-size:12.5px;color:var(--brand-dark);line-height:1.6;}
+  .login-admin-link{background:none;border:none;padding:0;color:var(--brand);font-size:12.5px;font-weight:600;text-decoration:underline;cursor:pointer;font-family:inherit;}
+  .login-foot{text-align:center;font-size:12.5px;color:#a9a3a1;margin-top:6px;}
+
   @media (max-width:800px){
     .sidebar{display:none;}
     .q-row{grid-template-columns:1fr;}
@@ -413,6 +446,9 @@ const state = {
   dbReady: false,     // true once the Apps Script API has answered at least once
   apiConfigured: false,
   apiError: "",
+  authed: false,       // true once the login screen has let someone in
+  loginCode: "",
+  loginError: "",
 };
 
 /* ============== DATA LAYER (Google Sheets via Apps Script Web App) ==============
@@ -578,8 +614,92 @@ async function deleteEmployee(id){
 function render(){
   const root = document.getElementById("root");
   root.innerHTML = "";
+  if(!state.authed){
+    root.appendChild(renderLogin());
+    return;
+  }
   root.appendChild(renderSidebar());
   root.appendChild(renderMain());
+}
+
+/* ---------- LOGIN ---------- */
+function attemptEmployeeLogin(){
+  const code = (state.loginCode||"").trim();
+  if(!code){ state.loginError="กรุณากรอกรหัสพนักงาน"; render(); return; }
+  const match = Object.entries(state.employees).find(([,e])=> (e.code||"").trim().toLowerCase()===code.toLowerCase());
+  if(!match){ state.loginError="ไม่พบรหัสพนักงานนี้ในระบบ กรุณาตรวจสอบอีกครั้ง"; render(); return; }
+  state.authed = true;
+  state.loginError = "";
+  state.role = "employee";
+  state.selectedId = match[0];
+  state.portalTab = "dashboard";
+  render();
+}
+function loginAsAdminDemo(){
+  state.authed = true;
+  state.loginError = "";
+  state.role = "hr";
+  render();
+}
+function logout(){
+  state.authed = false;
+  state.loginCode = "";
+  state.loginError = "";
+  state.selectedId = null;
+  render();
+}
+function renderLogin(){
+  const year = new Date().getFullYear() + 543;
+  return el("div",{class:"login-screen"},[
+    el("div",{class:"login-brand"},[
+      el("div",{class:"login-logo-row"},[
+        el("div",{class:"login-logo-box"},[ el("img",{src:LOGO_URL, alt:"ALLIED-TEK"}) ]),
+        el("div",{style:"display:flex;flex-direction:column;line-height:1.25;"},[
+          el("span",{style:"font-size:19px;font-weight:800;letter-spacing:.3px;"},"HROD"),
+          el("span",{style:"font-size:12.5px;opacity:.85;"},"Onboarding & Offboarding · ALLIED-TEK")
+        ])
+      ]),
+      el("div",{class:"login-head"},[
+        el("h1",{}, ["ดูแลพนักงานใหม่", el("br"), "ตั้งแต่วันแรก จนครบทดลองงาน"]),
+        el("p",{}, "ระบบกลางสำหรับ HR หัวหน้างาน และพนักงาน ในการติดตาม Onboarding, มอบหมายภารกิจ และประเมินผลช่วงทดลองงาน แบบเรียลไทม์")
+      ]),
+      el("div",{class:"login-tags"},[
+        el("span",{},"HR Admin Portal"),
+        el("span",{},"Supervisor Portal"),
+        el("span",{},"Employee Portal")
+      ])
+    ]),
+    el("div",{class:"login-panel"},[
+      el("form",{class:"login-form", onsubmit:(e)=>{ e.preventDefault(); attemptEmployeeLogin(); }},[
+        el("div",{style:"display:flex;flex-direction:column;gap:6px;"},[
+          el("h2",{},"เข้าสู่ระบบ"),
+          el("p",{class:"sub"},"กรอกรหัสพนักงานของคุณเพื่อเข้าใช้งาน HROD")
+        ]),
+        el("div",{class:"login-field"},[
+          el("label",{for:"login-code"},"รหัสพนักงาน"),
+          el("input",{
+            id:"login-code", type:"text", class:"login-input", placeholder:"เช่น EMP-0042",
+            value: state.loginCode,
+            oninput:(e)=>{ state.loginCode = e.target.value; }
+          })
+        ]),
+        state.loginError ? el("div",{class:"login-error"}, state.loginError) : null,
+        el("label",{class:"login-remember"},[
+          el("input",{type:"checkbox"}),
+          "จดจำฉันไว้ในอุปกรณ์นี้"
+        ]),
+        el("button",{type:"submit", class:"login-btn"}, "เข้าสู่ระบบ"),
+        el("div",{class:"login-demo"}, [
+          "โหมดสาธิต — ระบบนี้ยังไม่มีการยืนยันตัวตนจริง หากคุณเป็น ",
+          el("b",{},"HR หรือหัวหน้างาน"),
+          " สามารถ ",
+          el("button",{type:"button", class:"login-admin-link", onclick: loginAsAdminDemo}, "เข้าสู่ระบบในฐานะ HR / หัวหน้างาน"),
+          " แทนได้"
+        ]),
+        el("div",{class:"login-foot"}, `© ${year} ALLIED-TEK · ระบบ HR Onboarding & Offboarding (HROD)`)
+      ])
+    ])
+  ]);
 }
 
 /* ---------- SIDEBAR ---------- */
@@ -620,12 +740,13 @@ function renderSidebar(){
   ]);
   const settingsBtn = el("button",{class:"btn btn-block", style:"margin-top:8px;", onclick: openSettingsModal},
     "⚙️ ตั้งค่าฐานข้อมูล " + (state.apiConfigured ? (state.dbReady? "✅" : "⚠️") : "❗"));
+  const logoutBtn = el("button",{class:"btn btn-block", style:"margin-top:8px;", onclick: logout}, "🚪 ออกจากระบบ");
 
   if(state.role==="employee"){
-    return el("div",{class:"sidebar"},[ sidebarHead, roleBox, renderPortalSidebarBody(settingsBtn) ]);
+    return el("div",{class:"sidebar"},[ sidebarHead, roleBox, renderPortalSidebarBody([settingsBtn, logoutBtn]) ]);
   }
   if(state.role==="manager"){
-    return el("div",{class:"sidebar"},[ sidebarHead, roleBox, renderSupervisorSidebarBody(settingsBtn) ]);
+    return el("div",{class:"sidebar"},[ sidebarHead, roleBox, renderSupervisorSidebarBody([settingsBtn, logoutBtn]) ]);
   }
 
   // Default branch: role === "hr" → HR Admin Portal
@@ -667,12 +788,13 @@ function renderSidebar(){
 
   sidebar.appendChild(el("div",{class:"sidebar-foot"},[
     state.hrAdminTab==="employees" ? el("button",{class:"btn btn-primary btn-block", style:"margin-bottom:8px;", onclick: openAddEmployeeModal}, "+ เพิ่มพนักงานใหม่") : null,
-    settingsBtn
+    settingsBtn,
+    logoutBtn
   ]));
   return sidebar;
 }
 
-function renderPortalSidebarBody(settingsBtn){
+function renderPortalSidebarBody(footButtons){
   const emps = Object.entries(state.employees).map(([id,d])=>({id,...d}));
   emps.sort((a,b)=> (a.name||"").localeCompare(b.name||"", "th"));
   if(!state.selectedId && emps.length) state.selectedId = emps[0].id;
@@ -694,7 +816,7 @@ function renderPortalSidebarBody(settingsBtn){
     }, s.icon+"  "+s.label)
   ));
   wrap.appendChild(nav);
-  wrap.appendChild(el("div",{class:"sidebar-foot"},[ settingsBtn ]));
+  wrap.appendChild(el("div",{class:"sidebar-foot"},footButtons));
   return wrap;
 }
 
@@ -723,7 +845,7 @@ function getTeamMembers(name){
     .sort((a,b)=> (a.name||"").localeCompare(b.name||"", "th"));
 }
 
-function renderSupervisorSidebarBody(settingsBtn){
+function renderSupervisorSidebarBody(footButtons){
   const names = getSupervisorNames();
   if(!state.supervisorName && names.length) state.supervisorName = names[0];
   const team = getTeamMembers(state.supervisorName);
@@ -747,7 +869,7 @@ function renderSupervisorSidebarBody(settingsBtn){
     }, s.icon+"  "+s.label)
   ));
   wrap.appendChild(nav);
-  wrap.appendChild(el("div",{class:"sidebar-foot"},[ settingsBtn ]));
+  wrap.appendChild(el("div",{class:"sidebar-foot"},footButtons));
   return wrap;
 }
 
