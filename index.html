@@ -198,6 +198,10 @@
   .orient-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;}
   .orient-label{font-size:12px;color:var(--sub);margin-bottom:4px;}
   .orient-val{font-size:15px;font-weight:700;color:var(--ink);}
+  .exam-option-row{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;cursor:pointer;font-size:14px;max-width:560px;}
+  .exam-option-row input{flex:none;width:16px;height:16px;margin-top:3px;}
+  .exam-option-row span{flex:1;}
+  .exam-textarea{width:100%;max-width:520px;border:1px solid var(--line);border-radius:8px;padding:8px;font-family:inherit;font-size:14px;}
   .kpi-table{width:100%;border-collapse:collapse;margin-top:10px;}
   .kpi-table th{background:var(--brand);color:#fff;font-size:12px;padding:8px 10px;text-align:left;}
   .kpi-table td{border:1px solid var(--line);padding:9px 10px;font-size:12.5px;vertical-align:top;}
@@ -442,47 +446,182 @@ function employeeOverallStatusLabel(emp){
   return {label:"กำลัง Onboard", cls:"badge-onboarding"};
 }
 
-/* ---------- Orientation exam (Google Form) + probation date ---------- */
-function getOrientationResult(emp){
-  const code = (emp.code||"").trim();
-  if(!code) return null;
-  return state.orientationResults[code] || null;
+/* ---------- Orientation exam — in-app quiz (moved from Google Form) ---------- */
+// Round 1 = วันปฐมนิเทศ (orientation day), 22 auto-graded multiple-choice questions.
+const QUIZ_ROUND1 = [
+  {id:"r1q1", text:"บริษัทของเราทำธุรกิจอะไรบ้าง?", options:["ออกแบบและสร้างโรงงานน้ำตาลและโรงงานยางแท่ง","ซ่อมชิ้นส่วนเครื่องจักร, ผลิตชิ้นส่วนเครื่องจักร","เทคโนโลยีงานเชื่อมโลหะ","โรงงานคัดแยกขยะ / พลังงานจากขยะและชีวมวล (Energy Tek)","ถูกทุกข้อ"], correct:4},
+  {id:"r1q2", text:"ลูกค้าของเราวัดว่าเราทำงานดีหรือไม่ดีจากอะไร?", options:["ราคาถูกที่สุด","ส่งทันวันที่รับปาก และงานถูกต้องตั้งแต่ครั้งแรก","จำนวนพนักงานของเรา","ความสวยงามของสำนักงาน"], correct:1},
+  {id:"r1q3", text:"บริษัทได้รับการรับรองระบบบริหารงานคุณภาพมาตรฐานใด", options:["ISO 9001:2015","OHSAS 18001","ISO 14001","ISO 45001"], correct:0},
+  {id:"r1q4", text:"ค่านิยมองค์กร (Core Value) 5 ข้อของเราคือข้อใด", options:["Professional, Grow, Green, Innovation, Better partner","Professional, Growth, Green, Innovation, Better partner","Professional, Growth, Green, Innovation, Service mind","Professional, Growth together, Green, Innovation, Better partner"], correct:1},
+  {id:"r1q5", text:"เพื่อนร่วมงานเห็นใบ Onboarding Checklist ของพนักงานใหม่ ไม่มีชื่อพี่เลี้ยง แล้วโทรหาหัวหน้าแผนกทันทีจนได้ชื่อก่อนเที่ยง — พฤติกรรมนี้ตรงกับ Core Value ข้อใดมากที่สุด", options:["Green","Professional","Innovation","ไม่ตรงข้อใด"], correct:1},
+  {id:"r1q6", text:"บริษัทใช้ระบบใดในการบันทึกเวลาทำงาน และต้องบันทึกวันละกี่ครั้ง?", options:["LINE — วันละ 2 ครั้ง","Humansoft (สแกนหน้าในแอป) — วันละ 4 ครั้ง: 08:00 · 12:00 · ก่อน 13:00 · 17:00","Google Forms — วันละ 1 ครั้ง","สมุดลงชื่อหน้าออฟฟิศ — เช้าและเย็น"], correct:1},
+  {id:"r1q7", text:"เช้าวันหนึ่งคุณมาถึงที่ทำงานแต่ลงเวลาใน Humansoft ไม่ได้ ต้องทำอย่างไรเป็นอันดับแรก", options:["กลับบ้าน เพราะลงเวลาไม่ได้","ให้เพื่อนลงเวลาแทน","แจ้ง HR/ผู้เกี่ยวข้องในวันนั้น และเก็บหลักฐานว่ามาทำงานจริง","รอสิ้นเดือนค่อยแจ้ง"], correct:2},
+  {id:"r1q8", text:"ถ้าพรุ่งนี้คุณป่วยกะทันหัน ต้องแจ้งใคร ทางไหน ก่อนกี่โมง และกลับมาแล้วต้องทำอะไร?", options:["แจ้งเพื่อนร่วมงาน ทางไหนก็ได้ ไม่ต้องลงใบลา","แจ้งหัวหน้าโดยตรงทาง LINE/โทร ก่อนเวลาเริ่มงาน และยื่นใบลาใน Humansoft ภายในวันนั้นที่ป่วย","ไม่ต้องแจ้ง ถ้าลาแค่วันเดียว","แจ้ง HR อย่างเดียว"], correct:1},
+  {id:"r1q9", text:"ลากิจหรือลาพักร้อน ต้องกดลาใน Humansoft ล่วงหน้าอย่างน้อยกี่วัน", options:["1","2","3","5"], correct:2},
+  {id:"r1q10", text:"ช่วงทดลองงาน ถ้าต้องหยุดงานด้วยธุระส่วนตัว ต้องเลือกประเภทการลาใด?", options:["ลากิจ (ได้รับค่าจ้าง)","ลากิจ (ไม่ได้รับค่าจ้าง)","ลาพักร้อน","ลาป่วย"], correct:1},
+  {id:"r1q11", text:"ลาป่วยติดต่อกันตั้งแต่กี่วันขึ้นไป ต้องแนบใบรับรองแพทย์", options:["1 วัน","2 วัน","3 วัน","5 วัน"], correct:2},
+  {id:"r1q12", text:"ไม่มาทำงานและไม่แจ้งเหตุติดต่อกันกี่วัน ถือว่าละทิ้งงานและผิดวินัยร้ายแรง", options:["2 วัน","3 วัน","5 วัน","7 วัน"], correct:1},
+  {id:"r1q13", text:"รอบการจ่ายค่าจ้างข้อใดถูกต้อง", options:["ช่าง (โรงงาน): รอบ 26–10 จ่ายวันที่ 16 และรอบ 11–25 จ่ายวันที่ 30/31","สำนักงาน: จ่ายเดือนละครั้ง รอบ 26–25 จ่ายวันที่ 30/31","ค่าล่วงเวลาและเบี้ยเลี้ยง ทำงวดนี้จ่ายงวดถัดไป","ถูกทุกข้อ"], correct:3},
+  {id:"r1q14", text:"เงินเดือนออกแล้วยอดไม่ตรง หรือสลิปผิด ต้องติดต่อใครเป็นอันดับแรก และดูสลิปได้ที่ไหน?", options:["แผนกบัญชี · ดูสลิปจากอีเมล","แผนกบุคคล (HR) · ดูสลิปในแอป Humansoft","หัวหน้าแผนก · ขอสลิปกระดาษ","แผนกจัดซื้อ"], correct:1},
+  {id:"r1q15", text:"รายการใดเป็นรายการหักจากค่าจ้างตามกฎหมาย", options:["ประกันสังคม","ภาษีเงินได้","กยศ. (ถ้ามี)","ถูกทุกข้อ"], correct:3},
+  {id:"r1q16", text:"เมื่อผ่านทดลองงานแล้ว จะได้รับสิทธิสวัสดิการใดเพิ่ม", options:["กองทุนสำรองเลี้ยงชีพ","กองทุนฌาปนกิจ","เครื่องแบบพนักงานและลาวันเกิด ตามเงื่อนไขอายุงานที่บริษัทกำหนด","ถูกทุกข้อ"], correct:3},
+  {id:"r1q17", text:"ประกันอุบัติเหตุกลุ่มของบริษัทเป็นของบริษัทใด และคุ้มครองค่ารักษาพยาบาลจากอุบัติเหตุครั้งละเท่าไร?", options:["AIA · 5,000 บาท","Chubb Life · 10,000 - 30,000 บาท","เมืองไทยประกันชีวิต · 20,000 บาท","ไทยประกันชีวิต · 10,000 บาท"], correct:1},
+  {id:"r1q18", text:"ก่อนเข้าพื้นที่โรงงาน ต้องสวมอุปกรณ์ป้องกันอะไรบ้าง และเบิกได้ที่ไหน เมื่อไร?", options:["รองเท้าเซฟตี้ แว่นนิรภัย หมวกในโซนเครน · เบิกที่งานความปลอดภัย อังคาร–พฤหัส 09:30–10:00","รองเท้าผ้าใบ · เบิกที่ HR ได้ทุกวัน","ไม่ต้องสวม ถ้าเข้าแค่แป๊บเดียว","สวมเฉพาะหมวก · ซื้อเอง"], correct:0},
+  {id:"r1q19", text:"คุณเห็นสภาพการทำงานที่อาจเกิดอันตราย หรือเพื่อนไม่สวม PPE ควรทำอย่างไร?", options:["ปล่อยไว้ ไม่ใช่หน้าที่","ถ่ายรูปลง Social Media","เตือนอย่างเหมาะสม และแจ้งหัวหน้างาน/ผู้รับผิดชอบทันที","รอให้เกิดอุบัติเหตุก่อนค่อยแจ้ง"], correct:2},
+  {id:"r1q20", text:"ข้อใดเป็นข้อห้ามในพื้นที่โรงงาน", options:["นำโทรศัพท์มือถือและอาหารเข้าพื้นที่โรงงาน","สูบบุหรี่นอกจุดที่จัดให้","เข้าแถว Morning Talk ไม่ทัน 08:00 (ถือเป็นมาสาย)","ถูกทุกข้อ"], correct:3},
+  {id:"r1q21", text:"พนักงานใหม่ได้รับการประเมินผลทดลองงานภายในระยะเวลาใด และบริษัทใช้ข้อมูลใดประกอบ?", options:["60 วัน · ใช้คะแนนสอบ","90 วัน · ใช้ความเห็นเพื่อนร่วมงาน","119 วัน · ใช้ Skill Map, Onboarding Checklist และสถิติ ลา/ขาด/สาย","180 วัน · ใช้ยอดขาย"], correct:2},
+  {id:"r1q22", text:"คอมพิวเตอร์/ระบบ IT มีปัญหา ติดต่อใคร?", options:["คุณพัชราพร (ทราย) แผนกบุคคล","คุณพัชรี (ตู่) แผนกบัญชี","คุณธนเศรษฐ์ (เก้ง) ผู้ดูแลระบบ IT","เพื่อนร่วมงาน"], correct:2},
+];
+// Round 2 = ก่อนผ่านทดลองงาน (probation-pass). Mix of auto-graded MC and
+// open-text questions that HR reviews manually (type:"text").
+const QUIZ_ROUND2 = [
+  {id:"r2q23", text:"หน้าที่หลักของตำแหน่งคุณอยู่ในเอกสารใด และหาอ่านได้ที่ไหน?", options:["Smart JD · HR","สัญญาจ้าง · HR","ประกาศบริษัท · บอร์ด","ไม่มีเอกสาร ให้ถามเพื่อน"], correct:0},
+  {id:"r2q24", type:"text", text:"ให้ตอบจากสมุดพก หรือ Smart JD : งานของคุณ \"วัดว่าดีหรือไม่ดี\" ด้วยตัววัดอะไร? (เขียนตอบอย่างน้อย 2 ตัววัด)"},
+  {id:"r2q25", text:"Skill Map ในสมุดพก คืออะไร", options:["รายชื่อหลักสูตรอบรม","Smart JD ที่คุณต้องทำได้เองก่อนวันที่ 119 พร้อมแบบประเมินความสามารถ1-5 และผลประเมินวันที่ 30 / 60 / 75–90","แผนที่โรงงาน","ตารางเวลาทำงาน"], correct:1},
+  {id:"r2q26", text:"แบบประเมินความสามารถ ระดับ 3 ใน Skill Map หมายความว่าอย่างไร?", options:["รู้ขั้นตอน ทำได้เมื่อมีคนคุมตลอด","ทำได้เองในงานปกติ มีคนตรวจก่อนส่งต่อ","ทำได้เองครบตามมาตรฐาน ตรวจตัวเองได้ — ระดับที่คาดหวังเมื่อพ้นทดลองงาน","สอนคนอื่นได้"], correct:2},
+  {id:"r2q27", text:"ใครเป็นคนเซ็นใน OJT ทุกครั้งที่สอนงาน และใครเซ็นรับรองผลประเมินแต่ละรอบ?", options:["HR เซ็นทั้งหมด","พี่เลี้ยงเซ็นเมื่อสอน · หัวหน้าโดยตรงเซ็นรับรองรอบ D30 / D60 / D75-90","พนักงานใหม่เซ็นเอง","ผู้จัดการฝ่ายเซ็น"], correct:1},
+  {id:"r2q28", type:"text", ungraded:true, text:"ให้เล่าเรื่องจริง 1 เรื่องที่เห็นคนในแผนกทำ ที่ตรงกับ Core Value ข้อใดข้อหนึ่ง (เขียนตอบ 2–3 บรรทัด: วันที่ · ใครทำอะไร)"},
+  {id:"r2q29", type:"text", text:"ให้ตอบโดยไม่เปิดสมุด: พี่เลี้ยงของคุณชื่ออะไร? หัวหน้าโดยตรงชื่ออะไร? และ HR ที่จะมาคุยกับคุณวันที่ 7 ชื่ออะไร? (เขียนตอบ)"},
+  {id:"r2q30", text:"ถ้ามีคนพูดจารุนแรง ล้อเลียนเรื่องส่วนตัว หรือคุณไม่ได้รับการสอนงานตามที่ตกลง (Red flag) คุณต้องทำอย่างไร และจะเกิดอะไรขึ้น", options:["เก็บไว้ ไม่บอกใคร รอถึงวันที่ 90","บอก HR ทีม Onboarding ทันที (พูด โทร LINE หรือสแกน QR หน้าหลังสมุด) · HR รับเรื่องใน 24 ชม. · แจ้ง Head ใน 2–3 วัน · ปิดเคสไม่เกิน 5 วัน และกลับมาบอกผล","โพสต์ลง Social Media","ลาออกทันที"], correct:1},
+];
+const QUIZ_ROUNDS = {
+  round1: {key:"round1", label:"ข้อสอบปฐมนิเทศ (วันปฐมนิเทศ)", questions: QUIZ_ROUND1, passPct: 0.8},
+  round2: {key:"round2", label:"ข้อสอบก่อนผ่านทดลองงาน", questions: QUIZ_ROUND2, passPct: 0.8},
+};
+function quizGradedQuestions(def){ return def.questions.filter(q=>!q.ungraded); }
+function quizAutoMaxPoints(def){ return def.questions.filter(q=>q.type!=="text" && !q.ungraded).length; }
+function scoreQuizAnswers(def, answers){
+  let auto = 0, autoMax = 0, manualPending = 0;
+  def.questions.forEach(q=>{
+    if(q.ungraded) return;
+    if(q.type==="text"){ manualPending++; return; }
+    autoMax++;
+    if(answers[q.id]===q.correct) auto++;
+  });
+  return { auto, autoMax, manualPending };
 }
 function probationDueDate(emp){
   return emp.startDate ? addDays(emp.startDate, 105) : null;
 }
-function orientationPassFail(res){
-  if(!res || !res.total) return null;
-  return (res.score / res.total) >= 0.8;
+function getExamResult(emp, roundKey){
+  return (emp.exams && emp.exams[roundKey]) || null;
+}
+async function submitQuizRound(id, roundKey, answers){
+  const def = QUIZ_ROUNDS[roundKey];
+  const scored = scoreQuizAnswers(def, answers);
+  const emp = state.employees[id];
+  const exams = {...(emp.exams||{})};
+  exams[roundKey] = {
+    answers,
+    auto: scored.auto,
+    autoMax: scored.autoMax,
+    manualPending: scored.manualPending,
+    submittedAt: new Date().toISOString(),
+  };
+  await saveEmployee(id, {exams});
 }
 function renderOrientationCard(emp){
-  const res = getOrientationResult(emp);
   const due = probationDueDate(emp);
-  const pass = orientationPassFail(res);
-  const items = [
-    el("div",{class:"orient-item"},[
-      el("div",{class:"orient-label"}, "วันปฐมนิเทศ (วันสอบ)"),
-      el("div",{class:"orient-val"}, res && res.submittedAt ? fmtDate(res.submittedAt) : "ยังไม่พบผลสอบ")
-    ]),
-    el("div",{class:"orient-item"},[
-      el("div",{class:"orient-label"}, "คะแนนข้อสอบปฐมนิเทศ"),
+  const rows = Object.values(QUIZ_ROUNDS).map(def=>{
+    const res = getExamResult(emp, def.key);
+    const pct = res ? res.auto / res.autoMax : null;
+    const pass = pct!=null ? pct >= def.passPct : null;
+    return el("div",{class:"orient-item"},[
+      el("div",{class:"orient-label"}, def.label),
       res
-        ? el("div",{class:"orient-val"},[
-            el("span",{style: pass? "color:var(--brand-green);" : "color:var(--bad);"}, `${res.score} / ${res.total}`),
-            " ",
-            el("span",{class:"badge "+(pass?"badge-active":"badge-offboarding")}, pass? "ผ่านเกณฑ์ 80%" : "ยังไม่ผ่านเกณฑ์ 80%")
+        ? el("div",{},[
+            el("div",{class:"orient-val"},[
+              el("span",{style: pass? "color:var(--brand-green);" : "color:var(--bad);"}, `${res.auto} / ${res.autoMax}`),
+              " ",
+              el("span",{class:"badge "+(pass?"badge-active":"badge-offboarding")}, pass? "ผ่านเกณฑ์ 80%" : "ยังไม่ผ่านเกณฑ์ 80%")
+            ]),
+            el("div",{style:"font-size:11.5px;color:var(--sub);margin-top:2px;"},
+              fmtDate(res.submittedAt) + (res.manualPending? ` · รอ HR ตรวจคำตอบเขียน ${res.manualPending} ข้อ` : ""))
           ])
-        : el("div",{class:"orient-val"}, "-")
-    ]),
-    el("div",{class:"orient-item"},[
-      el("div",{class:"orient-label"}, "วันครบกำหนดทดลองงาน (105 วัน)"),
-      el("div",{class:"orient-val"}, due ? fmtDate(due) : "-")
-    ])
-  ];
+        : el("div",{class:"orient-val"}, "ยังไม่ได้ทำ")
+    ]);
+  });
+  rows.push(el("div",{class:"orient-item"},[
+    el("div",{class:"orient-label"}, "วันครบกำหนดทดลองงาน (105 วัน)"),
+    el("div",{class:"orient-val"}, due ? fmtDate(due) : "-")
+  ]));
   return el("div",{class:"card orient-card"},[
     el("div",{class:"section-title", style:"margin-top:0;"}, "การปฐมนิเทศและทดลองงาน"),
-    el("div",{class:"orient-grid"}, items)
+    el("div",{class:"orient-grid"}, rows)
   ]);
+}
+
+function startExamRound(roundKey){
+  state.examActiveRound = roundKey;
+  state.examDraft = {};
+  render();
+}
+function exitExamRound(){
+  state.examActiveRound = null;
+  state.examDraft = {};
+  render();
+}
+async function finishExamRound(id, roundKey){
+  const def = QUIZ_ROUNDS[roundKey];
+  const unanswered = def.questions.filter(q=> {
+    const v = state.examDraft[q.id];
+    return v===undefined || v===null || v==="";
+  });
+  if(unanswered.length){
+    alert(`กรุณาตอบให้ครบทุกข้อ (เหลืออีก ${unanswered.length} ข้อ)`);
+    return;
+  }
+  await submitQuizRound(id, roundKey, state.examDraft);
+  state.examActiveRound = null;
+  state.examDraft = {};
+  render();
+}
+function renderExamTab(emp, id){
+  const wrap = el("div",{});
+  if(!state.examActiveRound){
+    wrap.appendChild(el("div",{class:"lock-note"}, "ทำข้อสอบปฐมนิเทศได้โดยตรงในนี้ — ติ๊กคำตอบแล้วกดส่ง ระบบคำนวณคะแนนให้ทันที (ยกเว้นคำถามแบบเขียนตอบที่ HR จะตรวจภายหลัง)"));
+    wrap.appendChild(renderOrientationCard(emp));
+    wrap.appendChild(el("div",{class:"section-title"}, "เริ่มทำข้อสอบ"));
+    wrap.appendChild(el("div",{class:"biz-grid"}, Object.values(QUIZ_ROUNDS).map(def=>{
+      const res = getExamResult(emp, def.key);
+      return el("div",{class:"biz-card", style:"cursor:pointer;", onclick:()=>startExamRound(def.key)},[
+        el("b",{}, "📝 " + def.label),
+        el("span",{}, res? "ทำแล้ว — กดเพื่อทำใหม่อีกครั้ง →" : "ยังไม่ได้ทำ — เริ่มทำข้อสอบ →")
+      ]);
+    })));
+    return wrap;
+  }
+  const def = QUIZ_ROUNDS[state.examActiveRound];
+  wrap.appendChild(el("div",{class:"section-title", style:"margin-top:0;"}, def.label));
+  wrap.appendChild(el("div",{class:"lock-note"}, `ข้อสอบมี ${def.questions.length} ข้อ ทุกข้อจำเป็นต้องตอบ — เกณฑ์ผ่าน ${Math.round(def.passPct*100)}%`));
+  const card = el("div",{class:"card"});
+  def.questions.forEach((q,qi)=>{
+    const block = el("div",{style:"margin-bottom:22px;padding-bottom:18px;"+(qi<def.questions.length-1?"border-bottom:1px solid var(--line);":"")},[
+      el("div",{style:"font-weight:700;margin-bottom:10px;"}, `${qi+1}. ${q.text}`)
+    ]);
+    if(q.type==="text"){
+      block.appendChild(el("textarea",{
+        class:"exam-textarea", rows:3,
+        value: state.examDraft[q.id]||"",
+        onchange:(e)=>{ state.examDraft[q.id]=e.target.value; }
+      }));
+    }else{
+      q.options.forEach((opt,oi)=>{
+        const checked = state.examDraft[q.id]===oi;
+        block.appendChild(el("label",{class:"exam-option-row"},[
+          el("input",{type:"radio", name:q.id, checked: checked? "checked": null, onchange:()=>{ state.examDraft[q.id]=oi; render(); }}),
+          el("span",{}, opt)
+        ]));
+      });
+    }
+    card.appendChild(block);
+  });
+  wrap.appendChild(card);
+  wrap.appendChild(el("div",{style:"display:flex;gap:10px;margin-top:4px;"},[
+    el("button",{class:"btn", onclick: exitExamRound}, "← ยกเลิก"),
+    el("button",{class:"btn btn-primary", onclick:()=>finishExamRound(id, state.examActiveRound)}, "ส่งคำตอบ")
+  ]));
+  return wrap;
 }
 
 /* ============== STATE ============== */
@@ -491,6 +630,8 @@ const state = {
   employees: {},         // id -> doc data
   config: {},            // shared app-wide settings (see saveConfig) — onbTemplate, offTemplate, kpiRows, learningSections, supervisorNames
   orientationResults: {}, // code -> {score, total, name, submittedAt} from the Orientation Quiz Google Form responses
+  examActiveRound: null, // "round1" | "round2" | null — which quiz the employee is currently taking
+  examDraft: {},          // in-progress answers for the quiz currently being taken
   selectedId: null,
   view: "dashboard", // dashboard | employee | policies
   activeTab: "info",
@@ -769,6 +910,7 @@ const PORTAL_SECTIONS = [
   {key:"journey", icon:"🧭", label:"My Journey"},
   {key:"missions", icon:"🎯", label:"My Missions"},
   {key:"learning", icon:"📚", label:"Learning Center · นโยบาย & สวัสดิการ"},
+  {key:"exam", icon:"📝", label:"ข้อสอบปฐมนิเทศ"},
   {key:"assessment", icon:"📊", label:"Assessment"},
   {key:"feedback", icon:"💬", label:"Feedback"},
   {key:"achievements", icon:"🏆", label:"My Achievements"},
@@ -1185,6 +1327,7 @@ function renderEmployeePortal(){
     journey: renderPortalJourneyTab,
     missions: renderMissionsTab,
     learning: renderPoliciesView,
+    exam: renderExamTab,
     assessment: renderPortalAssessmentTab,
     feedback: renderPortalFeedbackTab,
     achievements: renderAchievementsTab,
@@ -1244,6 +1387,7 @@ function renderPortalDashboard(emp, id){
     ["passport","📘","สมุดพกของฉัน"],
     ["missions","🎯","ภารกิจ Onboarding"],
     ["learning","📚","ศูนย์การเรียนรู้"],
+    ["exam","📝","ข้อสอบปฐมนิเทศ"],
     ["assessment","📊","ตัวชี้วัดงาน"],
     ["feedback","💬","ส่งแบบสะท้อน"],
     ["achievements","🏆","ความสำเร็จของฉัน"],
@@ -1903,8 +2047,8 @@ function renderPassportTab(emp, id){
         ppRow("วันเริ่มงาน", fmtDate(emp.startDate)),
         ppRow("วันครบ 90-119 วัน", emp.startDate? fmtDate(addDays(emp.startDate,105)) : "-"),
         ppRow("รหัสพนักงาน", emp.code||"-"),
-        ppRow("วันปฐมนิเทศ (วันสอบ)", (()=>{ const r=getOrientationResult(emp); return r&&r.submittedAt? fmtDate(r.submittedAt) : "ยังไม่พบผลสอบ"; })()),
-        ppRow("คะแนนข้อสอบปฐมนิเทศ", (()=>{ const r=getOrientationResult(emp); if(!r) return "-"; const p=orientationPassFail(r); return `${r.score} / ${r.total}  ${p? "✅ ผ่านเกณฑ์":"⚠️ ไม่ผ่านเกณฑ์"}`; })()),
+        ppRow("ข้อสอบปฐมนิเทศ", (()=>{ const r=getExamResult(emp,"round1"); if(!r) return "ยังไม่ได้ทำ"; const pass=(r.auto/r.autoMax)>=0.8; return `${r.auto} / ${r.autoMax}  ${pass? "✅ ผ่านเกณฑ์":"⚠️ ไม่ผ่านเกณฑ์"} (${fmtDate(r.submittedAt)})`; })()),
+        ppRow("ข้อสอบก่อนผ่านทดลองงาน", (()=>{ const r=getExamResult(emp,"round2"); if(!r) return "ยังไม่ได้ทำ"; const pass=(r.auto/r.autoMax)>=0.8; return `${r.auto} / ${r.autoMax}  ${pass? "✅ ผ่านเกณฑ์":"⚠️ ไม่ผ่านเกณฑ์"} (${fmtDate(r.submittedAt)})`; })()),
       ]),
       el("div",{class:"pp-section-h"}, "Connection — คนที่พึ่งได้ (ติดอะไร ถามใคร)"),
       el("table",{class:"pp-conn-table"},[
