@@ -635,10 +635,10 @@ function attemptEmployeeLogin(){
   state.portalTab = "dashboard";
   render();
 }
-function loginAsAdminDemo(){
+function loginAsAdminDemo(role){
   state.authed = true;
   state.loginError = "";
-  state.role = "hr";
+  state.role = role;
   render();
 }
 function logout(){
@@ -690,11 +690,11 @@ function renderLogin(){
         ]),
         el("button",{type:"submit", class:"login-btn"}, "เข้าสู่ระบบ"),
         el("div",{class:"login-demo"}, [
-          "โหมดสาธิต — ระบบนี้ยังไม่มีการยืนยันตัวตนจริง หากคุณเป็น ",
-          el("b",{},"HR หรือหัวหน้างาน"),
-          " สามารถ ",
-          el("button",{type:"button", class:"login-admin-link", onclick: loginAsAdminDemo}, "เข้าสู่ระบบในฐานะ HR / หัวหน้างาน"),
-          " แทนได้"
+          el("div",{style:"margin-bottom:6px;"}, "โหมดสาธิต — ระบบนี้ยังไม่มีการยืนยันตัวตนจริง หากคุณเป็น HR หรือหัวหน้างาน เข้าได้โดยไม่ต้องใช้รหัสพนักงาน:"),
+          el("div",{style:"display:flex;gap:14px;flex-wrap:wrap;"},[
+            el("button",{type:"button", class:"login-admin-link", onclick:()=>loginAsAdminDemo("hr")}, "เข้าสู่ระบบในฐานะ HR"),
+            el("button",{type:"button", class:"login-admin-link", onclick:()=>loginAsAdminDemo("manager")}, "เข้าสู่ระบบในฐานะหัวหน้างาน/พี่เลี้ยง")
+          ])
         ]),
         el("div",{class:"login-foot"}, `© ${year} ALLIED-TEK · ระบบ HR Onboarding & Offboarding (HROD)`)
       ])
@@ -734,9 +734,7 @@ function renderSidebar(){
   ]);
   const roleBox = el("div",{class:"role-box"},[
     el("label",{},"มุมมองการใช้งาน (Role)"),
-    el("select",{onchange:(e)=>{ state.role=e.target.value; render(); }},
-      Object.entries(ROLE_LABEL).map(([v,l])=> el("option",{value:v, selected: v===state.role? "selected": null}, l))
-    )
+    el("div",{style:"font-weight:700;font-size:14px;color:var(--brand-dark);padding:7px 0 2px;"}, ROLE_LABEL[state.role])
   ]);
   const settingsBtn = el("button",{class:"btn btn-block", style:"margin-top:8px;", onclick: openSettingsModal},
     "⚙️ ตั้งค่าฐานข้อมูล " + (state.apiConfigured ? (state.dbReady? "✅" : "⚠️") : "❗"));
