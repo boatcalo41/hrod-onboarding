@@ -393,6 +393,9 @@ const state = {
   view: "dashboard", // dashboard | employee | policies
   activeTab: "info",
   portalTab: "dashboard", // Employee Portal section (used when role === "employee")
+  supervisorTab: "team",  // Supervisor Portal section (used when role === "manager")
+  supervisorName: "",     // which manager/buddy name the "คุณคือ" picker has selected
+  supervisorMemberId: null, // which team member is open in ojt/skill/coaching tabs
   loading: true,
   dbReady: false,     // true once the Apps Script API has answered at least once
   apiConfigured: false,
@@ -572,6 +575,9 @@ function renderSidebar(){
   if(state.role==="employee"){
     return el("div",{class:"sidebar"},[ sidebarHead, roleBox, renderPortalSidebarBody(settingsBtn) ]);
   }
+  if(state.role==="manager"){
+    return el("div",{class:"sidebar"},[ sidebarHead, roleBox, renderSupervisorSidebarBody(settingsBtn) ]);
+  }
 
   const emps = Object.entries(state.employees).map(([id,d])=>({id,...d}));
   emps.sort((a,b)=> (a.name||"").localeCompare(b.name||"", "th"));
@@ -632,6 +638,58 @@ function renderPortalSidebarBody(settingsBtn){
   return wrap;
 }
 
+const SUPERVISOR_SECTIONS = [
+  {key:"team", icon:"👥", label:"Team Onboarding"},
+  {key:"ojt", icon:"🛠️", label:"OJT Assignment"},
+  {key:"skill", icon:"🧪", label:"Skill Assessment"},
+  {key:"coaching", icon:"🗣️", label:"Coaching & Feedback"},
+  {key:"approval", icon:"📥", label:"Approval Center"},
+];
+
+function getSupervisorNames(){
+  const names = new Set();
+  Object.values(state.employees).forEach(e=>{
+    if(e.manager) names.add(e.manager);
+    if(e.buddy) names.add(e.buddy);
+  });
+  return Array.from(names).sort((a,b)=>a.localeCompare(b,"th"));
+}
+function getTeamMembers(name){
+  if(!name) return [];
+  return Object.entries(state.employees)
+    .filter(([,e])=> e.manager===name || e.buddy===name)
+    .map(([id,e])=>({id,...e}))
+    .sort((a,b)=> (a.name||"").localeCompare(b.name||"", "th"));
+}
+
+function renderSupervisorSidebarBody(settingsBtn){
+  const names = getSupervisorNames();
+  if(!state.supervisorName && names.length) state.supervisorName = names[0];
+  const team = getTeamMembers(state.supervisorName);
+  if(!state.supervisorMemberId && team.length) state.supervisorMemberId = team[0].id;
+
+  const wrap = el("div",{style:"display:flex;flex-direction:column;flex:1;min-height:0;"});
+  wrap.appendChild(el("div",{style:"margin:0 16px 14px;padding:10px;background:var(--chip);border-radius:10px;"},[
+    el("label",{style:"font-size:11px;color:var(--sub);display:block;margin-bottom:4px;"}, "คุณคือ (demo — ยังไม่มีระบบ login)"),
+    names.length
+      ? el("select",{onchange:(e)=>{ state.supervisorName=e.target.value; state.supervisorMemberId=null; render(); }},
+          names.map(n=> el("option",{value:n, selected: n===state.supervisorName?"selected":null}, n)))
+      : el("div",{style:"font-size:12.5px;color:var(--sub);"}, "ยังไม่มีชื่อหัวหน้างาน/พี่เลี้ยงในระบบ"),
+    el("div",{style:"font-size:11.5px;color:var(--sub);margin-top:6px;"}, `ทีมของคุณ: ${team.length} คน`)
+  ]));
+
+  const nav = el("div",{style:"flex:1;overflow-y:auto;padding:0 10px;"}, SUPERVISOR_SECTIONS.map(s=>
+    el("div",{
+      class:"nav-link"+(state.supervisorTab===s.key?" active":""),
+      style:"margin:0 6px 8px;",
+      onclick:()=>{ state.supervisorTab=s.key; render(); }
+    }, s.icon+"  "+s.label)
+  ));
+  wrap.appendChild(nav);
+  wrap.appendChild(el("div",{class:"sidebar-foot"},[ settingsBtn ]));
+  return wrap;
+}
+
 /* ---------- MAIN ---------- */
 function renderMain(){
   const main = el("div",{class:"main"});
@@ -639,6 +697,8 @@ function renderMain(){
   const content = el("div",{class:"content"});
   if(state.role==="employee"){
     content.appendChild(renderEmployeePortal());
+  } else if(state.role==="manager"){
+    content.appendChild(renderSupervisorPortal());
   } else if(state.view==="policies"){
     content.appendChild(renderPoliciesView());
   } else if(!state.selectedId || !state.employees[state.selectedId]){
@@ -658,6 +718,19 @@ function renderTopbar(){
       el("div",{},[
         el("h1",{}, section.icon+" "+section.label),
         el("div",{class:"sub"}, emp ? `สวัสดี ${emp.nickname||emp.name||""} · ${emp.position||"-"}` : "เลือกชื่อของคุณที่แถบด้านซ้ายเพื่อเริ่มต้น")
+      ]),
+      el("div",{style:"display:flex;gap:8px;align-items:center;"},[
+        el("span",{class:"pill"}, "มุมมอง: " + ROLE_LABEL[state.role])
+      ])
+    ]);
+  }
+  if(state.role==="manager"){
+    const section = SUPERVISOR_SECTIONS.find(s=>s.key===state.supervisorTab) || SUPERVISOR_SECTIONS[0];
+    const team = getTeamMembers(state.supervisorName);
+    return el("div",{class:"topbar"},[
+      el("div",{},[
+        el("h1",{}, section.icon+" "+section.label),
+        el("div",{class:"sub"}, state.supervisorName ? `${state.supervisorName} · ทีม ${team.length} คน` : "เลือกชื่อของคุณที่แถบด้านซ้ายเพื่อเริ่มต้น")
       ]),
       el("div",{style:"display:flex;gap:8px;align-items:center;"},[
         el("span",{class:"pill"}, "มุมมอง: " + ROLE_LABEL[state.role])
@@ -999,6 +1072,198 @@ function renderAchievementsTab(emp, id){
       el("div",{style:"font-weight:800;color:var(--brand-green);margin-top:6px;"}, "ยินดีด้วย! คุณผ่าน Onboarding ครบทุกภารกิจแล้ว")
     ]));
   }
+  return wrap;
+}
+
+/* ============== SUPERVISOR PORTAL ============== */
+function renderSupervisorPortal(){
+  const panel = el("div",{class:"tab-panel"});
+  const team = getTeamMembers(state.supervisorName);
+  if(!state.supervisorName){
+    panel.appendChild(el("div",{class:"empty-state"},[
+      el("div",{class:"big"},"👋"),
+      el("div",{}, "เลือกชื่อของคุณที่กล่อง \"คุณคือ\" ด้านซ้ายก่อนนะครับ")
+    ]));
+    return panel;
+  }
+  if(!team.length){
+    panel.appendChild(el("div",{class:"empty-state"},[
+      el("div",{class:"big"},"🗂️"),
+      el("div",{}, `ยังไม่มีพนักงานที่ระบุ "${state.supervisorName}" เป็นหัวหน้างานหรือพี่เลี้ยง`)
+    ]));
+    return panel;
+  }
+  const map = {
+    team: renderSupervisorTeamTab,
+    ojt: renderSupervisorOjtTab,
+    skill: renderSupervisorSkillTab,
+    coaching: renderSupervisorCoachingTab,
+    approval: renderSupervisorApprovalTab,
+  };
+  const fn = map[state.supervisorTab] || renderSupervisorTeamTab;
+  panel.appendChild(fn(team));
+  return panel;
+}
+
+// Small member-picker used by the ojt / skill / coaching tabs, which focus on one
+// team member at a time.
+function renderMemberPicker(team, onPick){
+  if(!state.supervisorMemberId || !team.find(m=>m.id===state.supervisorMemberId)){
+    state.supervisorMemberId = team[0].id;
+  }
+  return el("div",{class:"card", style:"margin-bottom:16px;"},[
+    el("div",{class:"field"},[
+      el("label",{},"เลือกพนักงานในทีม"),
+      el("select",{onchange:(e)=>{ state.supervisorMemberId=e.target.value; onPick&&onPick(); render(); }},
+        team.map(m=> el("option",{value:m.id, selected: m.id===state.supervisorMemberId?"selected":null}, `${m.name||"(ไม่มีชื่อ)"} · ${m.position||"-"}`)))
+    ])
+  ]);
+}
+
+function renderSupervisorTeamTab(team){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"section-title"}, `ทีมของคุณ (${team.length} คน)`));
+  wrap.appendChild(el("div",{class:"biz-grid"}, team.map(m=>{
+    const st = employeeOverallStatusLabel(m);
+    const prog = portalOverallProgress(m);
+    return el("div",{
+      class:"biz-card", style:"cursor:pointer;"+(m.id===state.supervisorMemberId?"border-color:var(--brand);box-shadow:0 0 0 1px var(--brand);":""),
+      onclick:()=>{ state.supervisorMemberId=m.id; render(); }
+    },[
+      el("b",{}, m.name||"(ไม่มีชื่อ)"),
+      el("span",{}, `${m.position||"-"} · ${m.department||"-"}`),
+      el("div",{style:"margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;"},[
+        el("span",{class:"badge "+st.cls}, st.label),
+        el("span",{style:"font-size:12px;color:var(--sub);font-weight:700;"}, prog+"%")
+      ]),
+      el("div",{class:"progress-bar", style:"width:100%;margin-top:6px;"},[ el("div",{class:"progress-fill", style:`width:${prog}%`}) ])
+    ]);
+  })));
+
+  const member = team.find(m=>m.id===state.supervisorMemberId) || team[0];
+  if(member){
+    wrap.appendChild(el("div",{class:"section-title"}, `เส้นทาง Onboarding ของ ${member.name||"(ไม่มีชื่อ)"}`));
+    wrap.appendChild(renderOnboardingTab(member, member.id));
+  }
+  return wrap;
+}
+
+function renderSupervisorOjtTab(team){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "มอบหมายหัวข้อ/ทักษะที่ต้องสอนงาน (OJT) ให้พนักงานแต่ละคน แล้วติดตามสถานะแยกจาก Onboarding Checklist หลัก"));
+  wrap.appendChild(renderMemberPicker(team));
+  const member = team.find(m=>m.id===state.supervisorMemberId) || team[0];
+  if(!member) return wrap;
+  const ojt = member.ojt || [];
+
+  const statusLabel = {assigned:"มอบหมายแล้ว", in_progress:"กำลังสอน", done:"สอนจบแล้ว"};
+  const statusCls = {assigned:"badge-onboarding", in_progress:"badge-offboarding", done:"badge-active"};
+
+  const list = el("div",{}, ojt.length ? ojt.map((o, idx)=> el("div",{class:"phase-card"},[
+    el("div",{class:"phase-head"},[
+      el("div",{},[
+        el("div",{class:"ph-title"}, o.topic),
+        el("div",{class:"ph-sub"}, o.dueDate? `กำหนดสอนจบ: ${fmtDate(o.dueDate)}` : "ไม่ระบุกำหนด")
+      ]),
+      el("span",{class:"badge "+(statusCls[o.status]||"badge-onboarding")}, statusLabel[o.status]||"มอบหมายแล้ว")
+    ]),
+    el("div",{style:"padding:10px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;"},[
+      el("select",{onchange:(e)=>{ ojt[idx]={...o, status:e.target.value}; saveEmployee(member.id,{ojt:[...ojt]}); }},
+        ["assigned","in_progress","done"].map(s=> el("option",{value:s, selected:o.status===s?"selected":null}, statusLabel[s]))),
+      el("input",{class:"item-note", style:"flex:1;min-width:200px;", placeholder:"บันทึกเพิ่มเติม", value:o.note||"",
+        onchange:(e)=>{ ojt[idx]={...o, note:e.target.value}; saveEmployee(member.id,{ojt:[...ojt]}); }}),
+      el("button",{class:"del-btn", title:"ลบรายการนี้", onclick:()=>{ ojt.splice(idx,1); saveEmployee(member.id,{ojt:[...ojt]}); render(); }}, "✕")
+    ])
+  ])) : [el("div",{class:"empty-state"},[el("div",{class:"big"},"🛠️"), el("div",{},"ยังไม่มีหัวข้อ OJT ที่มอบหมาย")])]);
+  wrap.appendChild(list);
+
+  let topic="", due="";
+  const topicInput = el("input",{placeholder:"หัวข้อ/ทักษะที่จะสอน...", oninput:(e)=>topic=e.target.value});
+  const dueInput = el("input",{type:"date", oninput:(e)=>due=e.target.value});
+  wrap.appendChild(el("div",{class:"card", style:"margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;"},[
+    el("div",{class:"field",style:"flex:1;min-width:200px;"},[el("label",{},"หัวข้อ OJT ใหม่"), topicInput]),
+    el("div",{class:"field",style:"width:160px;"},[el("label",{},"กำหนดสอนจบ"), dueInput]),
+    el("button",{class:"btn btn-primary", onclick:()=>{
+      if(!topic.trim()) return;
+      const next = [...ojt, {id:uid(), topic:topic.trim(), dueDate:due, status:"assigned", note:""}];
+      saveEmployee(member.id,{ojt:next});
+      topicInput.value=""; dueInput.value=""; topic=""; due="";
+      toast("มอบหมาย OJT แล้ว");
+    }}, "+ มอบหมาย")
+  ]));
+  return wrap;
+}
+
+function renderSupervisorSkillTab(team){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "ประเมินทักษะของพนักงานเทียบกับตัวชี้วัดงานของตำแหน่งนั้นๆ ในช่วงทดลองงาน"));
+  wrap.appendChild(renderMemberPicker(team));
+  const member = team.find(m=>m.id===state.supervisorMemberId) || team[0];
+  if(member) wrap.appendChild(renderKpiTab(member, member.id));
+  return wrap;
+}
+
+function renderSupervisorCoachingTab(team){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "ตอบแบบสะท้อนในฐานะพี่เลี้ยง (ส่วน ข) ให้พนักงานแต่ละคน — ส่วนของพนักงานและ HR จะแสดงให้ดูประกอบ"));
+  wrap.appendChild(renderMemberPicker(team));
+  const member = team.find(m=>m.id===state.supervisorMemberId) || team[0];
+  if(member) wrap.appendChild(renderReflectTab(member, member.id));
+  return wrap;
+}
+
+function renderSupervisorApprovalTab(team){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "สรุปรายการที่รอให้คุณตรวจสอบหรือรับทราบ — หน้านี้แสดงผลอย่างเดียว ไม่มีการอนุมัติ/ปฏิเสธในระบบ"));
+
+  const pending = [];
+  team.forEach(m=>{
+    const refl = m.reflections || {};
+    REFLECT_ROUNDS.forEach(r=>{
+      const d = refl[r.key];
+      if(d && (d.employeeOpen||"").trim()){
+        const buddyAnswered = (d.buddy||[]).some(row=>row.ans);
+        if(!buddyAnswered){
+          pending.push({type:"reflect", member:m, round:r, preview:d.employeeOpen});
+        }
+      }
+    });
+    if(m.status==="offboarding" && m.offboarding){
+      pending.push({type:"offboard", member:m, reason:m.offboarding.reason, lastWorkDate:m.offboarding.lastWorkDate});
+    }
+  });
+
+  if(!pending.length){
+    wrap.appendChild(el("div",{class:"empty-state"},[el("div",{class:"big"},"✅"), el("div",{},"ไม่มีรายการค้างตรวจสอบในตอนนี้")]));
+    return wrap;
+  }
+
+  wrap.appendChild(el("div",{}, pending.map(p=>{
+    if(p.type==="reflect"){
+      return el("div",{class:"phase-card"},[
+        el("div",{class:"phase-head"},[
+          el("div",{},[
+            el("div",{class:"ph-title"}, `${p.member.name} · ${p.round.title}`),
+            el("div",{class:"ph-sub"}, "พนักงานส่งคำตอบมาแล้ว รอพี่เลี้ยงตอบส่วนของตัวเอง")
+          ]),
+          el("span",{class:"badge badge-onboarding"}, "รอตรวจสอบ")
+        ]),
+        el("div",{style:"padding:10px 16px;font-size:13px;color:var(--sub);"}, `"${p.preview}"`),
+        el("div",{style:"padding:0 16px 14px;"},[
+          el("button",{class:"btn btn-primary", onclick:()=>{ state.supervisorTab="coaching"; state.supervisorMemberId=p.member.id; render(); }}, "ไปตอบแบบสะท้อน")
+        ])
+      ]);
+    }
+    return el("div",{class:"phase-card"},[
+      el("div",{class:"phase-head"},[
+        el("div",{},[
+          el("div",{class:"ph-title"}, `${p.member.name} · คำขอ Offboarding`),
+          el("div",{class:"ph-sub"}, `เหตุผล: ${p.reason||"-"} · วันทำงานวันสุดท้าย: ${p.lastWorkDate? fmtDate(p.lastWorkDate):"-"}`)
+        ]),
+        el("span",{class:"badge badge-offboarding"}, "กำลัง Offboard")
+      ])
+    ]);
+  })));
   return wrap;
 }
 
