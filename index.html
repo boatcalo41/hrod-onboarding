@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>HROD · Onboarding & Offboarding</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#f6f7f9; --panel:#ffffff; --ink:#1b1f24; --sub:#6b7280;
@@ -171,9 +174,16 @@
   @keyframes stampPop2{from{opacity:0;transform:scale(.7) rotate(-10deg);}to{opacity:1;transform:scale(1) rotate(-2deg);}}
   .pp-stamp .pp-stamp-icon{font-size:26px;display:block;margin-bottom:4px;}
   .pp-sign-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-top:26px;}
-  .pp-sign-box{border-top:1px dashed var(--sub);padding-top:8px;font-size:12px;color:var(--sub);text-align:center;}
+  .pp-sign-box{border-top:1px dashed var(--sub);padding-top:8px;font-size:12px;color:var(--sub);text-align:center;min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;}
+  .pp-sign-done .pp-sign-name{font-family:"Caveat","Segoe Script",cursive;font-size:25px;color:var(--brand-dark);line-height:1;}
+  .pp-sign-done .pp-sign-meta{font-size:11px;color:var(--good);font-weight:700;}
+  .pp-sign-form{display:flex;flex-direction:column;gap:6px;width:100%;max-width:200px;}
+  .pp-sign-form input{font-size:12.5px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;text-align:center;}
+  .pp-sign-form button{font-size:11.5px;padding:5px 0;border-radius:7px;border:1px solid var(--brand);background:var(--brand);color:#fff;cursor:pointer;}
+  .pp-sign-form button:hover{background:var(--brand-dark);}
+  .pp-sign-label{font-weight:700;color:var(--charcoal);}
   .pp-print-btn{margin-bottom:14px;}
-  @media print{ .sidebar,.topbar,.tabs,.pp-print-btn{display:none !important;} .content{padding:0 !important;} }
+  @media print{ .sidebar,.topbar,.tabs,.pp-print-btn,.pp-sign-form,.pp-sign-done button{display:none !important;} .content{padding:0 !important;} }
   .nav-link{display:block;margin:0 16px 10px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:700;color:var(--brand);background:var(--brand-light);cursor:pointer;border:1px solid transparent;}
   .nav-link:hover{border-color:var(--brand);}
   .nav-link.active{background:var(--brand);color:#fff;}
@@ -1756,6 +1766,68 @@ function renderHrUserRoleTab(){
 function ppRow(label,val){ return el("tr",{},[el("td",{class:"pp-label"},label), el("td",{},val)]); }
 function ppConnRow(who,name,phone){ return el("tr",{},[el("td",{},who), el("td",{},name||"-"), el("td",{},phone||"-")]); }
 
+/* ---------- Online sign-off (Passport) ---------- */
+const SIGN_BOXES = [
+  {key:"employee", label:"พนักงาน", allowedRole:"employee"},
+  {key:"buddy",    label:"พี่เลี้ยง", allowedRole:"manager"},
+  {key:"manager",  label:"หัวหน้างาน", allowedRole:"manager"},
+  {key:"hr",       label:"HR", allowedRole:"hr"},
+];
+async function signPassport(id, key, name){
+  const emp = state.employees[id];
+  const signatures = {...(emp.signatures||{})};
+  signatures[key] = { name, signedAt: Date.now() };
+  await saveEmployee(id, {signatures});
+}
+async function unsignPassport(id, key){
+  const emp = state.employees[id];
+  const signatures = {...(emp.signatures||{})};
+  delete signatures[key];
+  await saveEmployee(id, {signatures});
+}
+function renderSignBox(emp, id, box){
+  const signatures = emp.signatures || {};
+  const rec = signatures[box.key];
+  const canSign = state.role === box.allowedRole;
+
+  if(rec){
+    const children = [
+      el("div",{class:"pp-sign-label"}, box.label),
+      el("div",{class:"pp-sign-name"}, rec.name),
+      el("div",{class:"pp-sign-meta"}, "✅ ลงชื่อแล้ว · " + fmtDate(new Date(rec.signedAt).toISOString()))
+    ];
+    if(canSign){
+      children.push(el("button",{
+        type:"button",
+        style:"background:none;border:none;color:var(--sub);font-size:10.5px;text-decoration:underline;cursor:pointer;padding:0;",
+        onclick:()=>{ if(confirm("ยกเลิกลายเซ็นนี้?")) unsignPassport(id, box.key); }
+      }, "ยกเลิกลายเซ็น"));
+    }
+    return el("div",{class:"pp-sign-box pp-sign-done"}, children);
+  }
+
+  if(!canSign){
+    return el("div",{class:"pp-sign-box"},[
+      el("div",{class:"pp-sign-label"}, box.label),
+      el("div",{}, "ยังไม่ได้ลงชื่อ")
+    ]);
+  }
+
+  let typed = "";
+  const input = el("input",{type:"text", placeholder:"พิมพ์ชื่อ-นามสกุลเพื่อยืนยัน", oninput:(e)=> typed=e.target.value});
+  return el("div",{class:"pp-sign-box"},[
+    el("div",{class:"pp-sign-label"}, box.label),
+    el("div",{class:"pp-sign-form"},[
+      input,
+      el("button",{type:"button", onclick:()=>{
+        const name = typed.trim();
+        if(!name){ toast("กรุณาพิมพ์ชื่อ-นามสกุลก่อนลงชื่อ"); return; }
+        signPassport(id, box.key, name);
+      }}, "✍️ ยืนยันลงชื่อ")
+    ])
+  ]);
+}
+
 function renderPassportTab(emp, id){
   const onb = emp.onboarding || {};
   const phaseDone = (pk)=>{ const items=onb[pk]||[]; return items.length>0 && items.every(i=>i.status==="done"); };
@@ -1793,12 +1865,8 @@ function renderPassportTab(emp, id){
         return el("div",{class:"pp-stamp"+(done?" done":"")},[ el("span",{class:"pp-stamp-icon"}, done? "✅":"⏳"), label ]);
       })),
       el("div",{class:"pp-section-h"}, "ลงชื่อรับทราบ"),
-      el("div",{class:"pp-sign-grid"},[
-        el("div",{class:"pp-sign-box"},"พนักงาน / วันที่"),
-        el("div",{class:"pp-sign-box"},"พี่เลี้ยง / วันที่"),
-        el("div",{class:"pp-sign-box"},"หัวหน้างาน / วันที่"),
-        el("div",{class:"pp-sign-box"},"HR / วันที่"),
-      ])
+      el("div",{class:"lock-note", style:"margin-bottom:10px;"}, "ลงชื่อออนไลน์ได้โดยพิมพ์ชื่อ-นามสกุลยืนยัน — แต่ละคนลงชื่อได้เฉพาะช่องของตัวเอง ตามมุมมองที่ล็อกอินเข้ามา"),
+      el("div",{class:"pp-sign-grid"}, SIGN_BOXES.map(box=> renderSignBox(emp, id, box)))
     ])
   ]);
   wrap.appendChild(passport);
