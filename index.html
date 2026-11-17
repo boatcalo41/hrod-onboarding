@@ -38,6 +38,20 @@
      viewport, and respect the iPhone notch / home-indicator safe areas. */
   @supports (height:100dvh){ html,body{height:100dvh;} }
   .hamburger-btn{display:none;}
+  .notif-bell-btn{position:relative;width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:#fff;font-size:17px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
+  .notif-bell-btn:hover{background:var(--chip);}
+  .notif-badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:var(--brand-dark);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+  .notif-badge.overdue{background:var(--bad);}
+  .notif-backdrop{position:fixed;inset:0;z-index:95;background:transparent;}
+  .notif-panel{position:absolute;top:46px;right:0;z-index:96;width:320px;max-width:84vw;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.16);overflow:hidden;animation:panelIn .15s ease;}
+  .notif-panel-head{padding:10px 14px;font-weight:700;font-size:13px;border-bottom:1px solid var(--line);background:#fbfbfc;}
+  .notif-panel-list{max-height:320px;overflow-y:auto;}
+  .notif-item{padding:10px 14px;font-size:12.5px;line-height:1.5;border-top:1px solid #f1f2f4;cursor:pointer;}
+  .notif-item:first-child{border-top:none;}
+  .notif-item:hover{background:var(--chip);}
+  .notif-item.notif-overdue{border-left:3px solid var(--bad);}
+  .notif-item.notif-soon{border-left:3px solid var(--warn);}
+  .notif-panel-empty{padding:18px 14px;font-size:12.5px;color:var(--sub);text-align:center;}
   .sidebar-close-btn{display:none;background:none;border:none;font-size:18px;line-height:1;color:var(--sub);cursor:pointer;padding:6px;flex:0 0 auto;}
   .sidebar-backdrop{display:none;}
   @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
@@ -305,6 +319,12 @@
     .login-head h1{font-size:26px;}
     .login-panel{padding:32px 20px;}
     .sidebar-foot{padding-bottom:calc(12px + env(safe-area-inset-bottom));}
+    /* Wide tables (KPI, Passport) scroll horizontally instead of breaking
+       the page layout on a narrow screen. */
+    .kpi-table,.pp-table,.pp-conn-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
+    .kpi-table{min-width:520px;}
+    .pp-conn-table{min-width:420px;}
+    .notif-panel{position:fixed;top:60px;right:8px;left:8px;width:auto;max-width:none;}
   }
   @media (min-width:801px){
     .sidebar-backdrop{display:none !important;}
@@ -571,6 +591,95 @@ function probationDueDate(emp){
 function getExamResult(emp, roundKey){
   return (emp.exams && emp.exams[roundKey]) || null;
 }
+
+/* ---------- Notifications (in-app only — no server to push from, so this is
+   computed fresh from state.employees on every render) ----------
+   Surfaces three kinds of "มีอะไรค้างอยู่" items for HR / Supervisor:
+     - the probation/round-2 evaluation date approaching or passed with the
+       pre-probation exam still not taken
+     - written exam answers waiting on a manual HR review
+     - OJT topics whose "กำหนดสอนจบ" date is approaching or passed and not
+       marked done yet
+   Each item carries severity ("overdue" | "soon") and the employee id, so
+   the notification list can jump straight to that person. */
+const REFLECT_DUE_DAYS = { r1: 7, r2: 30, r3: 45 };
+function daysUntil(dateStr){
+  if(!dateStr) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(dateStr); d.setHours(0,0,0,0);
+  if(isNaN(d.getTime())) return null;
+  return Math.round((d-today)/86400000);
+}
+function employeeNotifications(emp, id){
+  const out = [];
+  if(emp.status==="terminated") return out;
+  const name = emp.name || "(ไม่มีชื่อ)";
+
+  const due = probationDueDate(emp);
+  if(due){
+    const dleft = daysUntil(due);
+    const r2 = getExamResult(emp, "round2");
+    if(!r2 && dleft!==null){
+      if(dleft<0) out.push({id, severity:"overdue", text:`${name}: เลยกำหนดครบทดลองงานแล้ว (${fmtDate(due)}) — ยังไม่ได้ทำข้อสอบก่อนผ่านทดลองงาน`});
+      else if(dleft<=7) out.push({id, severity:"soon", text:`${name}: ใกล้ครบทดลองงานใน ${dleft} วัน (${fmtDate(due)}) — ยังไม่ได้ทำข้อสอบก่อนผ่านทดลองงาน`});
+    }
+  }
+
+  ["round1","round2"].forEach(rk=>{
+    const r = getExamResult(emp, rk);
+    if(r && r.manualPending) out.push({id, severity:"soon", text:`${name}: มีคำตอบ${QUIZ_ROUNDS[rk].label} รอ HR ตรวจ ${r.manualPending} ข้อ`});
+  });
+
+  (emp.ojt||[]).forEach(o=>{
+    if(o.status==="done" || !o.dueDate) return;
+    const dleft = daysUntil(o.dueDate);
+    if(dleft===null) return;
+    if(dleft<0) out.push({id, severity:"overdue", text:`${name}: เลยกำหนดสอนจบหัวข้อ OJT "${o.topic}" แล้ว (${fmtDate(o.dueDate)})`});
+    else if(dleft<=3) out.push({id, severity:"soon", text:`${name}: ใกล้ถึงกำหนดสอนจบหัวข้อ OJT "${o.topic}" ใน ${dleft} วัน`});
+  });
+
+  if(emp.startDate){
+    Object.entries(REFLECT_DUE_DAYS).forEach(([key,dayNum])=>{
+      const target = addDays(emp.startDate, dayNum);
+      const dleft = daysUntil(target);
+      if(dleft===null) return;
+      const doneFlag = ((emp.reflections && emp.reflections[key] && emp.reflections[key].employeeOpen)||"").trim().length>0;
+      if(doneFlag) return;
+      if(dleft<0 && dleft>=-14) out.push({id, severity:"overdue", text:`${name}: เลยวันแบบสะท้อน 2/3 ทางรอบ ${dayNum} วันแล้ว (${fmtDate(target)})`});
+      else if(dleft>=0 && dleft<=3) out.push({id, severity:"soon", text:`${name}: ถึงกำหนดแบบสะท้อน 2/3 ทางรอบ ${dayNum} วัน ใน ${dleft} วัน`});
+    });
+  }
+  return out;
+}
+function collectNotifications(employeeList){
+  const items = employeeList.flatMap(e=> employeeNotifications(e, e.id));
+  items.sort((a,b)=> (a.severity==="overdue"?0:1) - (b.severity==="overdue"?0:1));
+  return items;
+}
+function toggleNotifPanel(){ state.notifPanelOpen = !state.notifPanelOpen; render(); }
+function notifBell(employeeList, onJump){
+  const items = collectNotifications(employeeList);
+  const overdueCount = items.filter(i=>i.severity==="overdue").length;
+  const wrap = el("div",{style:"position:relative;"});
+  const btn = el("button",{type:"button", class:"notif-bell-btn", onclick:toggleNotifPanel, "aria-label":"การแจ้งเตือน"},[
+    "🔔",
+    items.length ? el("span",{class:"notif-badge"+(overdueCount?" overdue":"")}, String(items.length)) : null
+  ]);
+  wrap.appendChild(btn);
+  if(state.notifPanelOpen){
+    wrap.appendChild(el("div",{class:"notif-backdrop", onclick:()=>{ state.notifPanelOpen=false; render(); }}));
+    wrap.appendChild(el("div",{class:"notif-panel"},[
+      el("div",{class:"notif-panel-head"}, "การแจ้งเตือน"),
+      items.length
+        ? el("div",{class:"notif-panel-list"}, items.map(it=> el("div",{
+            class:"notif-item notif-"+it.severity,
+            onclick:()=>{ state.notifPanelOpen=false; onJump(it.id); }
+          }, it.text)))
+        : el("div",{class:"notif-panel-empty"}, "ไม่มีรายการค้างอยู่ 🎉")
+    ]));
+  }
+  return wrap;
+}
 async function submitQuizRound(id, roundKey, answers){
   const def = QUIZ_ROUNDS[roundKey];
   const scored = scoreQuizAnswers(def, answers);
@@ -717,6 +826,7 @@ const state = {
   loginRolePassword: "",
   loginRoleError: "",
   mobileNavOpen: false, // true while the off-canvas sidebar drawer is open on small screens
+  notifPanelOpen: false,
 };
 
 /* ============== DATA LAYER (Google Sheets via Apps Script Web App) ==============
@@ -1279,6 +1389,7 @@ function renderTopbar(){
         el("div",{class:"sub"}, state.supervisorName ? `${state.supervisorName} · ทีม ${team.length} คน` : "เลือกชื่อของคุณที่แถบด้านซ้ายเพื่อเริ่มต้น")
       ]),
       el("div",{style:"display:flex;gap:8px;align-items:center;"},[
+        notifBell(team, (id)=>{ state.supervisorMemberId=id; state.supervisorTab="team"; render(); }),
         el("span",{class:"pill"}, "มุมมอง: " + ROLE_LABEL[state.role])
       ])
     ]);
@@ -1303,6 +1414,7 @@ function renderTopbar(){
       el("div",{class:"sub"}, emp ? `${emp.position||"-"} · ${emp.department||"-"} · เริ่มงาน ${fmtDate(emp.startDate)}` : (subtitles[state.hrAdminTab]||""))
     ]),
     el("div",{style:"display:flex;gap:8px;align-items:center;"},[
+      notifBell(Object.entries(state.employees).map(([id,e])=>({id,...e})), (id)=>{ state.hrAdminTab="employees"; state.selectedId=id; state.activeTab="info"; render(); }),
       el("span",{class:"pill"}, "มุมมอง: " + ROLE_LABEL[state.role]),
       emp ? renderTopbarActions(emp) : null
     ])
