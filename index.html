@@ -2,8 +2,20 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1" />
 <title>HROD · Onboarding & Offboarding</title>
+
+<!-- PWA: installable to the home screen, runs full-screen like a native app -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#c0272d">
+<link rel="icon" href="assets/icons/favicon-32.png" sizes="32x32">
+<link rel="icon" href="assets/icons/icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HROD">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap" rel="stylesheet">
@@ -18,7 +30,16 @@
     --chip:#f3f0ee;
   }
   *{box-sizing:border-box;}
-  body{margin:0;font-family:"Sarabun","Noto Sans Thai","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink);animation:fadeIn .35s ease;}
+  html,body{height:100%;}
+  body{margin:0;font-family:"Sarabun","Noto Sans Thai","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink);animation:fadeIn .35s ease;
+    -webkit-text-size-adjust:100%;overscroll-behavior-y:none;}
+  /* Full-screen "native app" feel when installed/standalone, and on mobile browsers
+     in general: avoid the address bar causing 100vh to be taller than the visible
+     viewport, and respect the iPhone notch / home-indicator safe areas. */
+  @supports (height:100dvh){ html,body{height:100dvh;} }
+  .hamburger-btn{display:none;}
+  .sidebar-close-btn{display:none;background:none;border:none;font-size:18px;line-height:1;color:var(--sub);cursor:pointer;padding:6px;flex:0 0 auto;}
+  .sidebar-backdrop{display:none;}
   @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
   @keyframes panelIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
   @keyframes stampPop{from{opacity:0;transform:scale(.6) rotate(-14deg);}to{opacity:1;transform:scale(1) rotate(-8deg);}}
@@ -35,6 +56,7 @@
   .policy-card,.biz-card,.card{transition:box-shadow .2s ease, transform .15s ease;}
   .biz-card:hover,.policy-card:hover{box-shadow:0 4px 14px rgba(0,0,0,.06);transform:translateY(-1px);}
   .app{display:flex;min-height:100vh;}
+  @supports (height:100dvh){ .app{min-height:100dvh;} }
   .sidebar{width:280px;flex:0 0 280px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;}
   .sidebar-head{padding:18px 16px 12px;border-bottom:1px solid var(--line);}
   .brand{font-weight:700;font-size:18px;letter-spacing:.3px;color:var(--brand);display:flex;align-items:center;gap:10px;}
@@ -138,7 +160,7 @@
   .modal h2{margin:0 0 4px;font-size:17px;}
   .modal .sub{font-size:12.5px;color:var(--sub);margin-bottom:16px;}
   .modal-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
-  .toast{position:fixed;bottom:20px;right:20px;background:#1b1f24;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:60;opacity:0;transition:opacity .25s;pointer-events:none;}
+  .toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom));right:calc(20px + env(safe-area-inset-right));background:#1b1f24;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:60;opacity:0;transition:opacity .25s;pointer-events:none;}
   .toast.show{opacity:1;}
   .cat-title{font-size:12.5px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;margin:18px 0 6px 2px;}
   .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px;}
@@ -207,7 +229,10 @@
   .kpi-table td{border:1px solid var(--line);padding:9px 10px;font-size:12.5px;vertical-align:top;}
 
   /* ---------- LOGIN PAGE ---------- */
-  .login-screen{min-height:100vh;width:100%;display:flex;flex-wrap:wrap;background:#faf7f6;animation:fadeIn .35s ease;}
+  .login-screen{min-height:100vh;width:100%;display:flex;flex-wrap:wrap;background:#faf7f6;animation:fadeIn .35s ease;
+    padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);
+    padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);}
+  @supports (height:100dvh){ .login-screen{min-height:100dvh;} }
   .login-brand{flex:1 1 480px;min-width:320px;min-height:420px;position:relative;overflow:hidden;
     background:linear-gradient(145deg,var(--brand) 0%,var(--brand-dark) 100%);
     display:flex;flex-direction:column;justify-content:space-between;padding:56px;box-sizing:border-box;color:#fff;}
@@ -239,10 +264,50 @@
   .login-foot{text-align:center;font-size:12.5px;color:#a9a3a1;margin-top:6px;}
 
   @media (max-width:800px){
-    .sidebar{display:none;}
+    /* Sidebar becomes an off-canvas drawer instead of a permanent column,
+       so navigation is still reachable via the hamburger button. */
+    .sidebar{
+      position:fixed; top:0; left:0; bottom:0; z-index:100;
+      width:84vw; max-width:320px;
+      transform:translateX(-100%);
+      transition:transform .25s ease;
+      box-shadow:4px 0 24px rgba(0,0,0,.18);
+      padding-top:env(safe-area-inset-top);
+      padding-bottom:env(safe-area-inset-bottom);
+      padding-left:env(safe-area-inset-left);
+    }
+    .sidebar.open{transform:translateX(0);}
+    .sidebar-close-btn{display:block;}
+    .sidebar-backdrop{
+      display:block; position:fixed; inset:0; z-index:90;
+      background:rgba(17,17,20,.45);
+      animation:fadeIn .15s ease;
+    }
+    .hamburger-btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:38px; height:38px; flex:0 0 auto; margin-right:4px;
+      font-size:19px; border:1px solid var(--line); border-radius:9px;
+      background:#fff; color:var(--ink); cursor:pointer;
+    }
+    .hamburger-btn:active{background:var(--chip);}
+    .topbar{padding:12px 14px;gap:10px;}
+    .topbar h1{font-size:16px;}
+    .content{padding:14px 14px calc(14px + env(safe-area-inset-bottom));}
+    .dash-grid{grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;}
+    .field-grid{grid-template-columns:1fr;}
+    .modal{max-width:94vw;padding:18px 16px;}
+    .modal-backdrop{padding:12px;}
     .q-row{grid-template-columns:1fr;}
     .item-row{grid-template-columns:28px 1fr;}
     .item-row .item-note,.item-row .item-date,.item-row .del-btn{grid-column:2;}
+    .pp-sign-grid{grid-template-columns:1fr;gap:16px;}
+    .login-brand{padding:36px 24px;min-height:0;}
+    .login-head h1{font-size:26px;}
+    .login-panel{padding:32px 20px;}
+    .sidebar-foot{padding-bottom:calc(12px + env(safe-area-inset-bottom));}
+  }
+  @media (min-width:801px){
+    .sidebar-backdrop{display:none !important;}
   }
 </style>
 </head>
@@ -651,6 +716,7 @@ const state = {
   loginRoleAttempt: null, // null | "hr" | "manager" — which role's password prompt is open
   loginRolePassword: "",
   loginRoleError: "",
+  mobileNavOpen: false, // true while the off-canvas sidebar drawer is open on small screens
 };
 
 /* ============== DATA LAYER (Google Sheets via Apps Script Web App) ==============
@@ -843,6 +909,9 @@ function render(){
   }
   root.appendChild(renderSidebar());
   root.appendChild(renderMain());
+  if(state.mobileNavOpen){
+    root.appendChild(el("div",{class:"sidebar-backdrop", onclick:()=>{ state.mobileNavOpen=false; render(); }}));
+  }
 }
 
 /* ---------- LOGIN ---------- */
@@ -999,11 +1068,13 @@ const HR_ADMIN_SECTIONS = [
 ];
 
 function renderSidebar(){
-  const sidebarHead = el("div",{class:"sidebar-head"},[
+  const sidebarClass = "sidebar" + (state.mobileNavOpen ? " open" : "");
+  const sidebarHead = el("div",{class:"sidebar-head", style:"display:flex;align-items:center;justify-content:space-between;gap:8px;"},[
     el("div",{class:"brand"},[
       el("img",{src:LOGO_URL, alt:"ALLIED-TEK"}),
       el("div",{class:"brand-text"},["HROD", el("small",{},"Onboarding & Offboarding")])
-    ])
+    ]),
+    el("button",{type:"button", class:"sidebar-close-btn", "aria-label":"ปิดเมนู", onclick:()=>{ state.mobileNavOpen=false; render(); }}, "✕")
   ]);
   const roleBox = el("div",{class:"role-box"},[
     el("label",{},"มุมมองการใช้งาน (Role)"),
@@ -1014,10 +1085,10 @@ function renderSidebar(){
   const logoutBtn = el("button",{class:"btn btn-block", style:"margin-top:8px;", onclick: logout}, "🚪 ออกจากระบบ");
 
   if(state.role==="employee"){
-    return el("div",{class:"sidebar"},[ sidebarHead, roleBox, renderPortalSidebarBody([settingsBtn, logoutBtn]) ]);
+    return el("div",{class:sidebarClass},[ sidebarHead, roleBox, renderPortalSidebarBody([settingsBtn, logoutBtn]) ]);
   }
   if(state.role==="manager"){
-    return el("div",{class:"sidebar"},[ sidebarHead, roleBox, renderSupervisorSidebarBody([settingsBtn, logoutBtn]) ]);
+    return el("div",{class:sidebarClass},[ sidebarHead, roleBox, renderSupervisorSidebarBody([settingsBtn, logoutBtn]) ]);
   }
 
   // Default branch: role === "hr" → HR Admin Portal
@@ -1025,11 +1096,11 @@ function renderSidebar(){
     el("div",{
       class:"nav-link"+(state.hrAdminTab===s.key?" active":""),
       style:"margin:0 6px 8px;",
-      onclick:()=>{ state.hrAdminTab=s.key; if(s.key==="dashboard") state.selectedId=null; render(); }
+      onclick:()=>{ state.hrAdminTab=s.key; if(s.key==="dashboard") state.selectedId=null; state.mobileNavOpen=false; render(); }
     }, s.icon+"  "+s.label)
   ));
 
-  const sidebar = el("div",{class:"sidebar"},[ sidebarHead, roleBox, nav ]);
+  const sidebar = el("div",{class:sidebarClass},[ sidebarHead, roleBox, nav ]);
 
   if(state.hrAdminTab==="employees"){
     const emps = Object.entries(state.employees).map(([id,d])=>({id,...d}));
@@ -1041,7 +1112,7 @@ function renderSidebar(){
       const st = employeeOverallStatusLabel(e);
       return el("div",{
         class:"emp-item"+(e.id===state.selectedId && state.view==="employee"?" active":""),
-        onclick:()=>{ state.selectedId=e.id; state.activeTab="info"; state.view="employee"; render(); }
+        onclick:()=>{ state.selectedId=e.id; state.activeTab="info"; state.view="employee"; state.mobileNavOpen=false; render(); }
       },[
         el("div",{class:"emp-name"}, e.name || "(ไม่มีชื่อ)"),
         el("div",{class:"emp-meta"}, `${e.position||"-"} · ${e.department||"-"}`),
@@ -1074,7 +1145,7 @@ function renderPortalSidebarBody(footButtons){
   wrap.appendChild(el("div",{style:"margin:0 16px 14px;padding:10px;background:var(--chip);border-radius:10px;"},[
     el("label",{style:"font-size:11px;color:var(--sub);display:block;margin-bottom:4px;"}, "คุณคือ (demo — ยังไม่มีระบบ login)"),
     emps.length
-      ? el("select",{onchange:(e)=>{ state.selectedId=e.target.value; render(); }},
+      ? el("select",{onchange:(e)=>{ state.selectedId=e.target.value; state.mobileNavOpen=false; render(); }},
           emps.map(e=> el("option",{value:e.id, selected: e.id===state.selectedId?"selected":null}, e.name||"(ไม่มีชื่อ)")))
       : el("div",{style:"font-size:12.5px;color:var(--sub);"}, "ยังไม่มีพนักงานในระบบ")
   ]));
@@ -1083,7 +1154,7 @@ function renderPortalSidebarBody(footButtons){
     el("div",{
       class:"nav-link"+(state.portalTab===s.key?" active":""),
       style:"margin:0 6px 8px;",
-      onclick:()=>{ state.portalTab=s.key; render(); }
+      onclick:()=>{ state.portalTab=s.key; state.mobileNavOpen=false; render(); }
     }, s.icon+"  "+s.label)
   ));
   wrap.appendChild(nav);
@@ -1126,7 +1197,7 @@ function renderSupervisorSidebarBody(footButtons){
   wrap.appendChild(el("div",{style:"margin:0 16px 14px;padding:10px;background:var(--chip);border-radius:10px;"},[
     el("label",{style:"font-size:11px;color:var(--sub);display:block;margin-bottom:4px;"}, "คุณคือ (demo — ยังไม่มีระบบ login)"),
     names.length
-      ? el("select",{onchange:(e)=>{ state.supervisorName=e.target.value; state.supervisorMemberId=null; render(); }},
+      ? el("select",{onchange:(e)=>{ state.supervisorName=e.target.value; state.supervisorMemberId=null; state.mobileNavOpen=false; render(); }},
           names.map(n=> el("option",{value:n, selected: n===state.supervisorName?"selected":null}, n)))
       : el("div",{style:"font-size:12.5px;color:var(--sub);"}, "ยังไม่มีชื่อหัวหน้างาน/พี่เลี้ยงในระบบ"),
     el("div",{style:"font-size:11.5px;color:var(--sub);margin-top:6px;"}, `ทีมของคุณ: ${team.length} คน`)
@@ -1136,7 +1207,7 @@ function renderSupervisorSidebarBody(footButtons){
     el("div",{
       class:"nav-link"+(state.supervisorTab===s.key?" active":""),
       style:"margin:0 6px 8px;",
-      onclick:()=>{ state.supervisorTab=s.key; render(); }
+      onclick:()=>{ state.supervisorTab=s.key; state.mobileNavOpen=false; render(); }
     }, s.icon+"  "+s.label)
   ));
   wrap.appendChild(nav);
@@ -1177,11 +1248,18 @@ function renderMain(){
   return main;
 }
 
+function mobileMenuBtn(){
+  return el("button",{
+    type:"button", class:"hamburger-btn", "aria-label":"เปิดเมนู",
+    onclick:()=>{ state.mobileNavOpen = !state.mobileNavOpen; render(); }
+  }, "☰");
+}
 function renderTopbar(){
   if(state.role==="employee"){
     const emp = state.selectedId ? state.employees[state.selectedId] : null;
     const section = PORTAL_SECTIONS.find(s=>s.key===state.portalTab) || PORTAL_SECTIONS[0];
     return el("div",{class:"topbar"},[
+      mobileMenuBtn(),
       el("div",{},[
         el("h1",{}, section.icon+" "+section.label),
         el("div",{class:"sub"}, emp ? `สวัสดี ${emp.nickname||emp.name||""} · ${emp.position||"-"}` : "เลือกชื่อของคุณที่แถบด้านซ้ายเพื่อเริ่มต้น")
@@ -1195,6 +1273,7 @@ function renderTopbar(){
     const section = SUPERVISOR_SECTIONS.find(s=>s.key===state.supervisorTab) || SUPERVISOR_SECTIONS[0];
     const team = getTeamMembers(state.supervisorName);
     return el("div",{class:"topbar"},[
+      mobileMenuBtn(),
       el("div",{},[
         el("h1",{}, section.icon+" "+section.label),
         el("div",{class:"sub"}, state.supervisorName ? `${state.supervisorName} · ทีม ${team.length} คน` : "เลือกชื่อของคุณที่แถบด้านซ้ายเพื่อเริ่มต้น")
@@ -1218,6 +1297,7 @@ function renderTopbar(){
     users: "รายชื่อหัวหน้างาน/พี่เลี้ยง/HR ที่ใช้อ้างอิงทั่วทั้งระบบ",
   };
   return el("div",{class:"topbar"},[
+    mobileMenuBtn(),
     el("div",{},[
       el("h1",{}, emp ? emp.name : section.icon+" "+section.label),
       el("div",{class:"sub"}, emp ? `${emp.position||"-"} · ${emp.department||"-"} · เริ่มงาน ${fmtDate(emp.startDate)}` : (subtitles[state.hrAdminTab]||""))
@@ -2502,6 +2582,14 @@ function openSettingsModal(){
   render();
   startPolling();
 })();
+
+// Register the service worker so the app is installable (Add to Home
+// Screen / "Install app") and still opens if the connection drops.
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("sw.js").catch(()=>{ /* offline/first load — not fatal */ });
+  });
+}
 </script>
 </body>
 </html>
