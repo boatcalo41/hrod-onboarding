@@ -648,6 +648,9 @@ const state = {
   authed: false,       // true once the login screen has let someone in
   loginCode: "",
   loginError: "",
+  loginRoleAttempt: null, // null | "hr" | "manager" — which role's password prompt is open
+  loginRolePassword: "",
+  loginRoleError: "",
 };
 
 /* ============== DATA LAYER (Google Sheets via Apps Script Web App) ==============
@@ -856,10 +859,35 @@ function attemptEmployeeLogin(){
   saveSession();
   render();
 }
-function loginAsAdminDemo(role){
+// HR/Manager login — a single shared password per role (not per-person).
+// HR sets/changes these from User & Role Management; until HR sets one,
+// these defaults apply so the roles are still reachable on a fresh setup.
+const DEFAULT_ROLE_PASSWORD = { hr: "HR1234", manager: "MGR1234" };
+function getRolePassword(role){
+  return (state.config && state.config[role + "Password"]) || DEFAULT_ROLE_PASSWORD[role];
+}
+function openRoleLoginPrompt(role){
+  state.loginRoleAttempt = role;
+  state.loginRolePassword = "";
+  state.loginRoleError = "";
+  render();
+}
+function cancelRoleLoginPrompt(){
+  state.loginRoleAttempt = null;
+  state.loginRolePassword = "";
+  state.loginRoleError = "";
+  render();
+}
+function attemptRoleLogin(role){
+  const pw = (state.loginRolePassword||"").trim();
+  if(!pw){ state.loginRoleError = "กรุณากรอกรหัสผ่าน"; render(); return; }
+  if(pw !== getRolePassword(role)){ state.loginRoleError = "รหัสผ่านไม่ถูกต้อง"; render(); return; }
   state.authed = true;
   state.loginError = "";
   state.role = role;
+  state.loginRoleAttempt = null;
+  state.loginRolePassword = "";
+  state.loginRoleError = "";
   saveSession();
   render();
 }
@@ -913,14 +941,35 @@ function renderLogin(){
         ]),
         el("button",{type:"submit", class:"login-btn"}, "เข้าสู่ระบบ"),
         el("div",{class:"login-demo"}, [
-          el("div",{style:"margin-bottom:6px;"}, "โหมดสาธิต — ระบบนี้ยังไม่มีการยืนยันตัวตนจริง หากคุณเป็น HR หรือหัวหน้างาน เข้าได้โดยไม่ต้องใช้รหัสพนักงาน:"),
-          el("div",{style:"display:flex;gap:14px;flex-wrap:wrap;"},[
-            el("button",{type:"button", class:"login-admin-link", onclick:()=>loginAsAdminDemo("hr")}, "เข้าสู่ระบบในฐานะ HR"),
-            el("button",{type:"button", class:"login-admin-link", onclick:()=>loginAsAdminDemo("manager")}, "เข้าสู่ระบบในฐานะหัวหน้างาน/พี่เลี้ยง")
+          el("div",{style:"margin-bottom:6px;"}, "สำหรับ HR หรือหัวหน้างาน/พี่เลี้ยง — เข้าด้วยรหัสผ่านประจำบทบาท:"),
+          state.loginRoleAttempt ? renderRoleLoginPrompt() : el("div",{style:"display:flex;gap:14px;flex-wrap:wrap;"},[
+            el("button",{type:"button", class:"login-admin-link", onclick:()=>openRoleLoginPrompt("hr")}, "เข้าสู่ระบบในฐานะ HR"),
+            el("button",{type:"button", class:"login-admin-link", onclick:()=>openRoleLoginPrompt("manager")}, "เข้าสู่ระบบในฐานะหัวหน้างาน/พี่เลี้ยง")
           ])
         ]),
         el("div",{class:"login-foot"}, `© ${year} ALLIED-TEK · ระบบ HR Onboarding & Offboarding (HROD)`)
       ])
+    ])
+  ]);
+}
+
+function renderRoleLoginPrompt(){
+  const role = state.loginRoleAttempt;
+  const roleLabel = role === "hr" ? "HR" : "หัวหน้างาน/พี่เลี้ยง";
+  return el("div",{style:"display:flex;flex-direction:column;gap:8px;"},[
+    el("div",{class:"login-field"},[
+      el("label",{},`รหัสผ่าน (${roleLabel})`),
+      el("input",{
+        type:"password", class:"login-input", autofocus:true, placeholder:"กรอกรหัสผ่าน",
+        value: state.loginRolePassword,
+        oninput:(e)=>{ state.loginRolePassword = e.target.value; },
+        onkeydown:(e)=>{ if(e.key==="Enter"){ e.preventDefault(); e.stopPropagation(); attemptRoleLogin(role); } }
+      })
+    ]),
+    state.loginRoleError ? el("div",{class:"login-error"}, state.loginRoleError) : null,
+    el("div",{style:"display:flex;gap:10px;"},[
+      el("button",{type:"button", class:"login-admin-link", onclick:(e)=>{ e.preventDefault(); attemptRoleLogin(role); }}, "เข้าสู่ระบบ"),
+      el("button",{type:"button", class:"login-admin-link", onclick:(e)=>{ e.preventDefault(); cancelRoleLoginPrompt(); }}, "ยกเลิก")
     ])
   ]);
 }
@@ -1943,7 +1992,7 @@ function renderHrSettingsTab(){
 
 function renderHrUserRoleTab(){
   const wrap = el("div",{});
-  wrap.appendChild(el("div",{class:"lock-note"}, "รายชื่อหัวหน้างาน/พี่เลี้ยงที่ใช้อ้างอิงใน Supervisor Portal (ยังไม่มีระบบ login/รหัสผ่านจริง) — เพิ่มชื่อไว้ล่วงหน้าได้ก่อนที่จะมีพนักงานอ้างอิงถึง ส่วนชื่อที่ \"พบจากข้อมูลพนักงาน\" มาจากช่องหัวหน้างาน/พี่เลี้ยงของพนักงานแต่ละคนโดยตรง ลบออกจากตรงนี้ไม่ได้ ต้องไปแก้ที่ข้อมูลพนักงานแทน"));
+  wrap.appendChild(el("div",{class:"lock-note"}, "รายชื่อหัวหน้างาน/พี่เลี้ยงที่ใช้อ้างอิงใน Supervisor Portal (สำหรับแสดงผล ไม่ใช่บัญชี login — การเข้าสู่ระบบ HR/หัวหน้างาน ใช้รหัสผ่านกลางด้านล่าง) — เพิ่มชื่อไว้ล่วงหน้าได้ก่อนที่จะมีพนักงานอ้างอิงถึง ส่วนชื่อที่ \"พบจากข้อมูลพนักงาน\" มาจากช่องหัวหน้างาน/พี่เลี้ยงของพนักงานแต่ละคนโดยตรง ลบออกจากตรงนี้ไม่ได้ ต้องไปแก้ที่ข้อมูลพนักงานแทน"));
 
   const configured = new Set(getConfiguredSupervisorNames());
   const allNames = getSupervisorNames();
@@ -1978,7 +2027,28 @@ function renderHrUserRoleTab(){
   wrap.appendChild(el("div",{class:"biz-grid"}, Object.entries(ROLE_LABEL).map(([v,l])=>
     el("div",{class:"biz-card"},[ el("b",{},l), el("span",{}, v==="hr"?"เข้าถึง HR Admin Portal ทั้งหมด" : v==="manager"?"เข้าถึง Supervisor Portal เฉพาะทีมตัวเอง" : "เข้าถึง Employee Portal ของตัวเอง") ])
   )));
+
+  wrap.appendChild(el("div",{class:"section-title"}, "รหัสผ่านเข้าสู่ระบบ — HR และ หัวหน้างาน/พี่เลี้ยง"));
+  wrap.appendChild(el("div",{class:"lock-note"}, "เป็นรหัสผ่านกลางของแต่ละบทบาท (ไม่ใช่รหัสเฉพาะบุคคล) — ใครรู้รหัสนี้ก็เข้าสู่ระบบในบทบาทนั้นได้จากหน้า Login ให้เปลี่ยนจากค่าเริ่มต้นและแจ้งเฉพาะคนที่เกี่ยวข้องเท่านั้น"));
+  wrap.appendChild(roleePasswordCard("hr", "HR"));
+  wrap.appendChild(roleePasswordCard("manager", "หัวหน้างาน/พี่เลี้ยง"));
   return wrap;
+}
+
+function roleePasswordCard(role, label){
+  let newPw = "";
+  const input = el("input",{type:"text", placeholder:"รหัสผ่านใหม่สำหรับ " + label, oninput:(e)=>newPw=e.target.value});
+  return el("div",{class:"card", style:"margin-top:10px;display:flex;gap:8px;align-items:flex-end;"},[
+    el("div",{class:"field", style:"flex:1;"},[
+      el("label",{}, `รหัสผ่านปัจจุบันของ ${label}: ${getRolePassword(role)}`),
+      input
+    ]),
+    el("button",{class:"btn btn-primary", onclick:()=>{
+      if(!newPw.trim()) return;
+      saveConfig(role + "Password", newPw.trim());
+      input.value=""; newPw="";
+    }}, "เปลี่ยนรหัสผ่าน")
+  ]);
 }
 
 function ppRow(label,val){ return el("tr",{},[el("td",{class:"pp-label"},label), el("td",{},val)]); }
