@@ -1157,13 +1157,8 @@ function renderRoleLoginPrompt(){
 const PORTAL_SECTIONS = [
   {key:"dashboard", icon:"🏠", label:"Dashboard"},
   {key:"passport", icon:"📘", label:"My Passport"},
-  {key:"journey", icon:"🧭", label:"My Journey"},
-  {key:"missions", icon:"🎯", label:"My Missions"},
   {key:"learning", icon:"📚", label:"Learning Center · นโยบาย & สวัสดิการ"},
   {key:"exam", icon:"📝", label:"ข้อสอบปฐมนิเทศ"},
-  {key:"assessment", icon:"📊", label:"Assessment"},
-  {key:"feedback", icon:"💬", label:"Feedback"},
-  {key:"achievements", icon:"🏆", label:"My Achievements"},
 ];
 
 const HR_ADMIN_SECTIONS = [
@@ -1640,7 +1635,7 @@ function renderPortalDashboard(emp, id){
   wrap.appendChild(el("div",{class:"pp-stamps"}, phaseKeys.map(([pk,label])=>{
     const items = onb[pk]||[];
     const done = items.length>0 && items.every(i=>i.status==="done");
-    return el("div",{class:"pp-stamp"+(done?" done":""), style:"cursor:pointer;", onclick:()=>{ state.portalTab="missions"; render(); }},[
+    return el("div",{class:"pp-stamp"+(done?" done":""), style:"cursor:pointer;", onclick:()=>{ state.portalTab="passport"; render(); }},[
       el("span",{class:"pp-stamp-icon"}, done?"✅":"⏳"), label
     ]);
   })));
@@ -1648,12 +1643,8 @@ function renderPortalDashboard(emp, id){
   wrap.appendChild(el("div",{class:"section-title"}, "ทางลัด"));
   const shortcuts = [
     ["passport","📘","สมุดพกของฉัน"],
-    ["missions","🎯","ภารกิจ Onboarding"],
     ["learning","📚","ศูนย์การเรียนรู้"],
     ["exam","📝","ข้อสอบปฐมนิเทศ"],
-    ["assessment","📊","ตัวชี้วัดงาน"],
-    ["feedback","💬","ส่งแบบสะท้อน"],
-    ["achievements","🏆","ความสำเร็จของฉัน"],
   ];
   wrap.appendChild(el("div",{class:"biz-grid"}, shortcuts.map(([key,icon,label])=>
     el("div",{class:"biz-card", style:"cursor:pointer;", onclick:()=>{ state.portalTab=key; render(); }},[
