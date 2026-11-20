@@ -511,7 +511,8 @@ function makeEmptyReflections(){
       employee: EMP_QUESTIONS.map(q=>({q, ans:"", note:""})),
       buddy: BUDDY_QUESTIONS.map(q=>({q, ans:"", note:""})),
       employeeOpen: "",
-      hrNotes: ""
+      hrNotes: "",
+      submittedAt: "" // set once the employee submits their part (ส่วน ก) — see submitReflectRound()
     };
   });
   return out;
@@ -620,22 +621,22 @@ function employeeNotifications(emp, id){
     const dleft = daysUntil(due);
     const r2 = getExamResult(emp, "round2");
     if(!r2 && dleft!==null){
-      if(dleft<0) out.push({id, severity:"overdue", text:`${name}: เลยกำหนดครบทดลองงานแล้ว (${fmtDate(due)}) — ยังไม่ได้ทำข้อสอบก่อนผ่านทดลองงาน`});
-      else if(dleft<=7) out.push({id, severity:"soon", text:`${name}: ใกล้ครบทดลองงานใน ${dleft} วัน (${fmtDate(due)}) — ยังไม่ได้ทำข้อสอบก่อนผ่านทดลองงาน`});
+      if(dleft<0) out.push({id, severity:"overdue", kind:"exam", text:`${name}: เลยกำหนดครบทดลองงานแล้ว (${fmtDate(due)}) — ยังไม่ได้ทำข้อสอบก่อนผ่านทดลองงาน`});
+      else if(dleft<=7) out.push({id, severity:"soon", kind:"exam", text:`${name}: ใกล้ครบทดลองงานใน ${dleft} วัน (${fmtDate(due)}) — ยังไม่ได้ทำข้อสอบก่อนผ่านทดลองงาน`});
     }
   }
 
   ["round1","round2"].forEach(rk=>{
     const r = getExamResult(emp, rk);
-    if(r && r.manualPending) out.push({id, severity:"soon", text:`${name}: มีคำตอบ${QUIZ_ROUNDS[rk].label} รอ HR ตรวจ ${r.manualPending} ข้อ`});
+    if(r && r.manualPending) out.push({id, severity:"soon", kind:"examReview", text:`${name}: มีคำตอบ${QUIZ_ROUNDS[rk].label} รอ HR ตรวจ ${r.manualPending} ข้อ`});
   });
 
   (emp.ojt||[]).forEach(o=>{
     if(o.status==="done" || !o.dueDate) return;
     const dleft = daysUntil(o.dueDate);
     if(dleft===null) return;
-    if(dleft<0) out.push({id, severity:"overdue", text:`${name}: เลยกำหนดสอนจบหัวข้อ OJT "${o.topic}" แล้ว (${fmtDate(o.dueDate)})`});
-    else if(dleft<=3) out.push({id, severity:"soon", text:`${name}: ใกล้ถึงกำหนดสอนจบหัวข้อ OJT "${o.topic}" ใน ${dleft} วัน`});
+    if(dleft<0) out.push({id, severity:"overdue", kind:"ojt", text:`${name}: เลยกำหนดสอนจบหัวข้อ OJT "${o.topic}" แล้ว (${fmtDate(o.dueDate)})`});
+    else if(dleft<=3) out.push({id, severity:"soon", kind:"ojt", text:`${name}: ใกล้ถึงกำหนดสอนจบหัวข้อ OJT "${o.topic}" ใน ${dleft} วัน`});
   });
 
   if(emp.startDate){
@@ -643,22 +644,35 @@ function employeeNotifications(emp, id){
       const target = addDays(emp.startDate, dayNum);
       const dleft = daysUntil(target);
       if(dleft===null) return;
-      const doneFlag = ((emp.reflections && emp.reflections[key] && emp.reflections[key].employeeOpen)||"").trim().length>0;
+      const doneFlag = !!(emp.reflections && emp.reflections[key] && emp.reflections[key].submittedAt);
       if(doneFlag) return;
-      if(dleft<0 && dleft>=-14) out.push({id, severity:"overdue", text:`${name}: เลยวันแบบสะท้อน 2/3 ทางรอบ ${dayNum} วันแล้ว (${fmtDate(target)})`});
-      else if(dleft>=0 && dleft<=3) out.push({id, severity:"soon", text:`${name}: ถึงกำหนดแบบสะท้อน 2/3 ทางรอบ ${dayNum} วัน ใน ${dleft} วัน`});
+      if(dleft<0 && dleft>=-14) out.push({id, severity:"overdue", kind:"reflect", text:`${name}: เลยวันแบบสะท้อน 2/3 ทางรอบ ${dayNum} วันแล้ว (${fmtDate(target)}) — ยังไม่ได้ส่งคำตอบ`});
+      else if(dleft>=0 && dleft<=7) out.push({id, severity:"soon", kind:"reflect", text:`${name}: ถึงกำหนดแบบสะท้อน 2/3 ทางรอบ ${dayNum} วัน ใน ${dleft} วัน — ยังไม่ได้ส่งคำตอบ`});
     });
   }
   return out;
 }
-function collectNotifications(employeeList){
-  const items = employeeList.flatMap(e=> employeeNotifications(e, e.id));
+// Employee Portal's bell only shows what the employee themself needs to act
+// on (their own exam deadline, their own reflection rounds) — OJT "สอนจบ"
+// reminders are the buddy's job and exam-review reminders are HR's, so both
+// stay out of this employee-facing view even though employeeNotifications()
+// computes them too (HR/Supervisor topbars use the unfiltered list).
+function employeeFacingNotifications(emp, id){
+  return employeeNotifications(emp, id).filter(n=> n.kind==="exam" || n.kind==="reflect");
+}
+function collectNotifications(employeeList, notifFn){
+  const fn = notifFn || employeeNotifications;
+  const items = employeeList.flatMap(e=> fn(e, e.id));
   items.sort((a,b)=> (a.severity==="overdue"?0:1) - (b.severity==="overdue"?0:1));
   return items;
 }
 function toggleNotifPanel(){ state.notifPanelOpen = !state.notifPanelOpen; render(); }
-function notifBell(employeeList, onJump){
-  const items = collectNotifications(employeeList);
+// notifFn (optional): which notification set to show — HR/Supervisor pass
+// nothing (sees everything); the Employee Portal passes
+// employeeFacingNotifications so employees only see items they themselves
+// need to act on.
+function notifBell(employeeList, onJump, notifFn){
+  const items = collectNotifications(employeeList, notifFn);
   const overdueCount = items.filter(i=>i.severity==="overdue").length;
   const wrap = el("div",{style:"position:relative;"});
   const btn = el("button",{type:"button", class:"notif-bell-btn", onclick:toggleNotifPanel, "aria-label":"การแจ้งเตือน"},[
@@ -673,7 +687,7 @@ function notifBell(employeeList, onJump){
       items.length
         ? el("div",{class:"notif-panel-list"}, items.map(it=> el("div",{
             class:"notif-item notif-"+it.severity,
-            onclick:()=>{ state.notifPanelOpen=false; onJump(it.id); }
+            onclick:()=>{ state.notifPanelOpen=false; onJump(it.id, it.kind); }
           }, it.text)))
         : el("div",{class:"notif-panel-empty"}, "ไม่มีรายการค้างอยู่ 🎉")
     ]));
@@ -832,6 +846,11 @@ const state = {
   jdSelectedId: null,    // which JD record "edit"/"pdf" is showing
   jdSearch: "",
   jdGenerating: false,   // true while a "Generate PDF" call is in flight
+  portalReflectRound: null, // null = round list; "r1"|"r2"|"r3" = that round's detail/submit screen (Employee Portal)
+  portalReflectError: "",   // validation message shown when ส่งคำตอบ is blocked by unanswered questions
+  portalReflectDraft: null, // in-progress answers for the round currently open — kept OUT of state.employees so
+                             // the 4s poll (which overwrites state.employees wholesale from the server) can never
+                             // wipe an unsaved draft; only merged in via saveEmployee once ส่งคำตอบ succeeds
 };
 
 /* ============== DATA LAYER (Google Sheets via Apps Script Web App) ==============
@@ -1292,6 +1311,7 @@ function renderRoleLoginPrompt(){
 const PORTAL_SECTIONS = [
   {key:"dashboard", icon:"🏠", label:"Dashboard"},
   {key:"passport", icon:"📘", label:"My Passport"},
+  {key:"reflect", icon:"📝", label:"แบบสะท้อน 2/3 ทาง"},
   {key:"learning", icon:"📚", label:"Learning Center · นโยบาย & สวัสดิการ"},
   {key:"exam", icon:"📝", label:"ข้อสอบปฐมนิเทศ"},
 ];
@@ -1508,6 +1528,7 @@ function renderTopbar(){
         el("div",{class:"sub"}, emp ? `สวัสดี ${emp.nickname||emp.name||""} · ${emp.position||"-"}` : "เลือกชื่อของคุณที่แถบด้านซ้ายเพื่อเริ่มต้น")
       ]),
       el("div",{style:"display:flex;gap:8px;align-items:center;"},[
+        emp ? notifBell([emp], (jumpId, kind)=>{ state.portalTab = kind==="exam" ? "exam" : "reflect"; state.portalReflectRound=null; state.mobileNavOpen=false; render(); }, employeeFacingNotifications) : null,
         el("span",{class:"pill"}, "มุมมอง: " + ROLE_LABEL[state.role])
       ])
     ]);
@@ -1721,6 +1742,7 @@ function renderEmployeePortal(){
   const map = {
     dashboard: renderPortalDashboard,
     passport: renderPassportTab,
+    reflect: renderPortalReflectTab,
     journey: renderPortalJourneyTab,
     missions: renderMissionsTab,
     learning: renderPoliciesView,
@@ -2972,6 +2994,126 @@ function renderReflectTab(emp, id){
     wrap.appendChild(renderReflectRound(round, data, onChange, canEditEmployee, canEditBuddy, canEditHR));
   });
   return wrap;
+}
+
+/* ---------- Employee Portal: "แบบสะท้อน 2/3 ทาง" (ส่วน ก only, with a
+   required submit) — reuses the same reflections data model as
+   renderReflectTab above (HR/Supervisor's view of all 3 rounds), but adds:
+     - a due-date window per round (opens REFLECT_DUE_DAYS-minus-7 days
+       before its due date, stays open indefinitely once overdue so a late
+       answer still counts) so an employee isn't shown rounds 2–3 on day one
+     - a hard requirement, enforced on submit only, that every ส่วน ก
+       question has an answer and the open question isn't blank — ส่วน ข/ค
+       stay visible but locked, since those belong to the buddy/HR ---------- */
+function reflectRoundDueDate(emp, round){
+  return emp.startDate ? addDays(emp.startDate, REFLECT_DUE_DAYS[round.key]) : null;
+}
+function reflectRoundStatus(emp, round){
+  const data = (emp.reflections && emp.reflections[round.key]) || null;
+  if(data && data.submittedAt) return { state:"submitted", dueDate: reflectRoundDueDate(emp, round) };
+  const due = reflectRoundDueDate(emp, round);
+  const dleft = due ? daysUntil(due) : null;
+  if(dleft===null) return { state:"open", dueDate: due };          // no start date on record — don't block, just let them fill it
+  if(dleft>7) return { state:"locked", dueDate: due, dleft };
+  if(dleft<0) return { state:"overdue", dueDate: due, dleft };
+  return { state:"open", dueDate: due, dleft };
+}
+function validateReflectRoundAnswers(data){
+  const missingQ = (data.employee||[]).filter(r=>!r.ans).length;
+  const missingOpen = !(data.employeeOpen||"").trim();
+  return { ok: missingQ===0 && !missingOpen, missingQ, missingOpen };
+}
+function emptyReflectRoundData(){
+  return { employee: EMP_QUESTIONS.map(q=>({q,ans:"",note:""})), buddy: BUDDY_QUESTIONS.map(q=>({q,ans:"",note:""})), employeeOpen:"", hrNotes:"", submittedAt:"" };
+}
+function openReflectRound(emp, roundKey){
+  const refl = emp.reflections || makeEmptyReflections();
+  const existing = refl[roundKey] || emptyReflectRoundData();
+  // Deep-clone into a scratch draft so typing doesn't touch state.employees —
+  // the buddy/HR sections are read-only here, but cloned too so the detail
+  // view can still show their current answers underneath the "locked" grey-out.
+  state.portalReflectDraft = JSON.parse(JSON.stringify(existing));
+  state.portalReflectRound = roundKey;
+  state.portalReflectError = "";
+  render();
+}
+function submitReflectRound(emp, id, round){
+  const data = state.portalReflectDraft || emptyReflectRoundData();
+  const check = validateReflectRoundAnswers(data);
+  if(!check.ok){
+    const parts = [];
+    if(check.missingQ) parts.push(`ยังไม่ได้ตอบ ${check.missingQ} ข้อ`);
+    if(check.missingOpen) parts.push("ยังไม่ได้ตอบคำถามปลายเปิด");
+    state.portalReflectError = "กรุณาตอบให้ครบก่อนส่ง — " + parts.join(" และ");
+    render();
+    return;
+  }
+  const refl = emp.reflections || makeEmptyReflections();
+  const nextData = { ...data, submittedAt: new Date().toISOString() };
+  const next = { ...refl, [round.key]: nextData };
+  state.portalReflectError = "";
+  state.portalReflectRound = null;
+  state.portalReflectDraft = null;
+  saveEmployee(id, { reflections: next });
+  toast("ส่งแบบสะท้อนเรียบร้อยแล้ว");
+}
+function renderPortalReflectRoundList(emp, id){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"sub", style:"margin-bottom:14px;"}, "สะท้อนความรู้สึกและความคืบหน้าในช่วงทดลองงานของคุณ — ตอบตามความจริง ข้อมูลนี้จะช่วยให้ HR และหัวหน้างานดูแลคุณได้ดีขึ้น"));
+  const refl = emp.reflections || makeEmptyReflections();
+  REFLECT_ROUNDS.forEach(round=>{
+    const st = reflectRoundStatus(emp, round);
+    const data = refl[round.key];
+    let badge, actionBtn;
+    if(st.state==="submitted"){
+      badge = el("span",{class:"badge badge-active"}, "✓ ส่งแล้ว");
+      actionBtn = el("button",{class:"btn", onclick:()=>openReflectRound(emp, round.key)}, "ดู / แก้ไขคำตอบ");
+    } else if(st.state==="overdue"){
+      badge = el("span",{class:"badge badge-offboarding"}, `เลยกำหนดแล้ว (${fmtDate(st.dueDate)}) — ยังไม่ได้ตอบ`);
+      actionBtn = el("button",{class:"btn btn-primary", onclick:()=>openReflectRound(emp, round.key)}, "กรอกแบบสะท้อน");
+    } else if(st.state==="locked"){
+      badge = el("span",{class:"badge", style:"background:#f1f2f4;color:#8a8f99;"}, `🔒 เปิดให้ตอบวันที่ ${fmtDate(st.dueDate)}`);
+      actionBtn = el("button",{class:"btn", disabled:"disabled", style:"opacity:.5;cursor:not-allowed;"}, "ยังไม่เปิดให้ตอบ");
+    } else {
+      badge = el("span",{class:"badge badge-onboarding"}, st.dueDate ? `ถึงกำหนดแล้ว (${fmtDate(st.dueDate)})` : "เปิดให้ตอบแล้ว");
+      actionBtn = el("button",{class:"btn btn-primary", onclick:()=>openReflectRound(emp, round.key)}, "กรอกแบบสะท้อน");
+    }
+    wrap.appendChild(el("div",{class:"card", style:"padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px;"},[
+      el("div",{},[
+        el("div",{style:"font-weight:700;font-size:14.5px;"}, round.title),
+        el("div",{style:"font-size:12.5px;color:var(--sub);margin-top:4px;"}, round.openQ),
+        el("div",{style:"margin-top:8px;"}, badge)
+      ]),
+      actionBtn
+    ]));
+  });
+  wrap.appendChild(el("div",{style:"font-size:12px;color:var(--sub);margin-top:4px;"}, "หัวหน้างาน/พี่เลี้ยงและ HR จะตอบส่วนของตัวเองแยกต่างหาก คุณจะเห็นเฉพาะคำตอบส่วนของคุณ (ส่วน ก)"));
+  return wrap;
+}
+function renderPortalReflectRoundDetail(emp, id, roundKey){
+  const round = REFLECT_ROUNDS.find(r=>r.key===roundKey);
+  if(!state.portalReflectDraft) state.portalReflectDraft = emptyReflectRoundData(); // e.g. after a hard refresh landed back here
+  const data = state.portalReflectDraft;
+  const wrap = el("div",{});
+  wrap.appendChild(el("a",{href:"#", onclick:(e)=>{ e.preventDefault(); state.portalReflectRound=null; state.portalReflectDraft=null; state.portalReflectError=""; render(); }}, "← กลับไปรายการแบบสะท้อน"));
+  wrap.appendChild(el("h3",{style:"margin:10px 0 2px;"}, round.title));
+  if(data.submittedAt) wrap.appendChild(el("div",{class:"sub", style:"margin-bottom:10px;"}, `ส่งคำตอบแล้วเมื่อ ${fmtDate(data.submittedAt)} — แก้ไขและกดส่งใหม่ได้`));
+
+  // Edits only touch the scratch draft (state.portalReflectDraft), never
+  // state.employees — re-render locally so selections/typing show instantly,
+  // but nothing reaches the server until ส่งคำตอบ passes validation.
+  const onChange = ()=>render();
+  wrap.appendChild(renderReflectRound(round, data, onChange, true, false, false));
+
+  if(state.portalReflectError) wrap.appendChild(el("div",{class:"login-error", style:"margin-top:4px;"}, state.portalReflectError));
+  wrap.appendChild(el("div",{style:"display:flex;justify-content:flex-end;gap:10px;margin-top:14px;"},[
+    el("button",{class:"btn btn-primary", onclick:()=>submitReflectRound(emp, id, round)}, "✓ ส่งคำตอบ")
+  ]));
+  return wrap;
+}
+function renderPortalReflectTab(emp, id){
+  if(state.portalReflectRound) return renderPortalReflectRoundDetail(emp, id, state.portalReflectRound);
+  return renderPortalReflectRoundList(emp, id);
 }
 
 /* ============== MODALS ============== */
