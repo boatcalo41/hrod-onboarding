@@ -827,6 +827,11 @@ const state = {
   loginRoleError: "",
   mobileNavOpen: false, // true while the off-canvas sidebar drawer is open on small screens
   notifPanelOpen: false,
+  jobDescriptions: {},  // id -> Smart JD record (see JD_* helpers below) — HR Admin "Job Description" tab
+  jdView: "list",        // "list" | "edit" | "pdf" — which Job Description screen is showing
+  jdSelectedId: null,    // which JD record "edit"/"pdf" is showing
+  jdSearch: "",
+  jdGenerating: false,   // true while a "Generate PDF" call is in flight
 };
 
 /* ============== DATA LAYER (Google Sheets via Apps Script Web App) ==============
@@ -869,7 +874,7 @@ async function apiList(){
   if(!res.ok) throw new Error("http " + res.status);
   const body = await res.json();
   if(!body.ok) throw new Error(body.error || "api error");
-  return { employees: body.employees || [], config: body.config || {}, orientation: body.orientation || {} };
+  return { employees: body.employees || [], config: body.config || {}, orientation: body.orientation || {}, jobDescriptions: body.jobDescriptions || [] };
 }
 
 async function apiSetConfig(key, data){
@@ -910,6 +915,47 @@ async function apiDelete(id){
   if(!body.ok) throw new Error(body.error || "api error");
 }
 
+async function apiSetJD(id, data){
+  const url = getApiUrl();
+  if(!url) throw new Error("no-api-url");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "setJD", id, data })
+  });
+  const body = await res.json();
+  if(!body.ok) throw new Error(body.error || "api error");
+}
+
+async function apiDeleteJD(id){
+  const url = getApiUrl();
+  if(!url) throw new Error("no-api-url");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "deleteJD", id })
+  });
+  const body = await res.json();
+  if(!body.ok) throw new Error(body.error || "api error");
+}
+
+// Asks the backend to render the current draft as a PDF matching the
+// original F-PM-25 layout and file it into Google Drive under ฝ่าย/แผนก.
+// Returns { pdfUrl, pdfFileId, pdfUpdatedAt } — the caller merges that into
+// the record (the backend also persists the merged record itself).
+async function apiGenerateJdPdf(id, data){
+  const url = getApiUrl();
+  if(!url) throw new Error("no-api-url");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "generateJdPdf", id, data })
+  });
+  const body = await res.json();
+  if(!body.ok) throw new Error(body.error || "api error");
+  return { pdfUrl: body.pdfUrl, pdfFileId: body.pdfFileId, pdfUpdatedAt: body.pdfUpdatedAt };
+}
+
 /* ============== POLLING ============== */
 function startPolling(){
   state.apiConfigured = !!getApiUrl();
@@ -925,15 +971,19 @@ function startPolling(){
 
 async function refreshEmployees(){
   try{
-    const { employees: list, config, orientation } = await apiList();
+    const { employees: list, config, orientation, jobDescriptions } = await apiList();
     const next = {};
     list.forEach(row=>{ next[row.id] = row.data; });
+    const nextJd = {};
+    (jobDescriptions||[]).forEach(row=>{ nextJd[row.id] = row.data; });
     const changed = JSON.stringify(next) !== JSON.stringify(state.employees)
       || JSON.stringify(config) !== JSON.stringify(state.config)
-      || JSON.stringify(orientation) !== JSON.stringify(state.orientationResults);
+      || JSON.stringify(orientation) !== JSON.stringify(state.orientationResults)
+      || JSON.stringify(nextJd) !== JSON.stringify(state.jobDescriptions);
     state.employees = next;
     state.config = config || {};
     state.orientationResults = orientation || {};
+    state.jobDescriptions = nextJd;
     if(!state.selectedId){
       const ids = Object.keys(state.employees);
       if(ids.length) state.selectedId = ids[0];
@@ -1007,6 +1057,91 @@ async function deleteEmployee(id){
     await apiDelete(id);
     toast("ลบข้อมูลแล้ว");
   }catch(e){ toast("ลบไม่สำเร็จ: " + (e.message||e)); }
+}
+
+/* ============== JOB DESCRIPTION (Smart JD, F-PM-25) ============== */
+function emptyJD(){
+  return {
+    title: "", division: "", department: "", section: "",
+    revision: "04", effectiveDate: "02 Apr 2025",
+    status: "draft", // draft | pending | approved
+    objectives: [""], responsibilities: [""], kpis: [""],
+    qualifications: { age:"", education:"", major:"", experience:"", licenses:"", others:"" },
+    authority: "ให้ดูรายละเอียดในคู่มือ / ระบบอำนาจดำเนินการ",
+    chain: "ให้ดูรายละเอียดในผังองค์กร",
+    knowledgeSkills: [""], personality: [""], usage: [""],
+    signers: { employeeName:"", deptManagerName:"", deptManagerPosition:"", sectionManagerName:"", sectionManagerPosition:"", divisionManagerName:"", divisionManagerPosition:"", hrName:"", hrPosition:"" },
+    createdAt: Date.now(),
+    pdfUrl: "", pdfFileId: "", pdfUpdatedAt: ""
+  };
+}
+
+async function createJD(){
+  const id = uid();
+  const doc = emptyJD();
+  state.jobDescriptions[id] = doc;
+  state.jdSelectedId = id;
+  state.jdView = "edit";
+  render();
+  try{ await apiSetJD(id, doc); }
+  catch(e){ toast("สร้าง Job Description ไม่สำเร็จ: " + (e.message||e)); }
+}
+
+async function saveJD(id, patch){
+  const merged = {...(state.jobDescriptions[id]||emptyJD()), ...patch};
+  state.jobDescriptions[id] = merged; // optimistic local update
+  render();
+  try{
+    await apiSetJD(id, merged);
+  }catch(e){
+    toast("บันทึกไม่สำเร็จ: " + (e.message||e));
+    console.error(e);
+  }
+}
+
+async function deleteJD(id){
+  if(!confirm("ลบ Job Description นี้ใช่หรือไม่? (ไฟล์ PDF ใน Google Drive จะไม่ถูกลบ)")) return;
+  delete state.jobDescriptions[id];
+  if(state.jdSelectedId===id){ state.jdSelectedId=null; state.jdView="list"; }
+  render();
+  try{
+    await apiDeleteJD(id);
+    toast("ลบ Job Description แล้ว");
+  }catch(e){ toast("ลบไม่สำเร็จ: " + (e.message||e)); }
+}
+
+async function generateJdPdf(id){
+  const data = state.jobDescriptions[id];
+  if(!data) return;
+  if(!data.title || !data.division || !data.department){
+    toast("กรุณากรอก ฝ่าย / แผนก / ตำแหน่งงาน ก่อนสร้าง PDF");
+    return;
+  }
+  state.jdGenerating = true;
+  render();
+  try{
+    const { pdfUrl, pdfFileId, pdfUpdatedAt } = await apiGenerateJdPdf(id, data);
+    state.jobDescriptions[id] = { ...data, pdfUrl, pdfFileId, pdfUpdatedAt };
+    toast("สร้าง PDF และบันทึกลง Google Drive แล้ว");
+  }catch(e){
+    toast("สร้าง PDF ไม่สำเร็จ: " + (e.message||e));
+    console.error(e);
+  }finally{
+    state.jdGenerating = false;
+    render();
+  }
+}
+
+function jdDepartments(){
+  const set = new Set();
+  Object.values(state.jobDescriptions).forEach(d=>{ if(d.division) set.add(d.division+"||"+( d.department||"")); });
+  return set;
+}
+function jdStatusLabel(status){
+  return { draft:"ฉบับร่าง", pending:"รออนุมัติ", approved:"อนุมัติแล้ว" }[status] || "ฉบับร่าง";
+}
+function jdStatusClass(status){
+  return { draft:"badge-onboarding", pending:"badge-offboarding", approved:"badge-active" }[status] || "badge-onboarding";
 }
 
 /* ============== RENDER ROOT ============== */
@@ -1164,6 +1299,7 @@ const PORTAL_SECTIONS = [
 const HR_ADMIN_SECTIONS = [
   {key:"dashboard", icon:"📈", label:"HR Dashboard"},
   {key:"employees", icon:"🗂️", label:"Employee Management"},
+  {key:"jd", icon:"📋", label:"Job Description"},
   {key:"journey", icon:"🧭", label:"Journey Template"},
   {key:"learning", icon:"📚", label:"Learning Management"},
   {key:"assessment", icon:"📊", label:"Assessment Management"},
@@ -1201,7 +1337,7 @@ function renderSidebar(){
     el("div",{
       class:"nav-link"+(state.hrAdminTab===s.key?" active":""),
       style:"margin:0 6px 8px;",
-      onclick:()=>{ state.hrAdminTab=s.key; if(s.key==="dashboard") state.selectedId=null; state.mobileNavOpen=false; render(); }
+      onclick:()=>{ state.hrAdminTab=s.key; if(s.key==="dashboard") state.selectedId=null; if(s.key==="jd") state.jdView="list"; state.mobileNavOpen=false; render(); }
     }, s.icon+"  "+s.label)
   ));
 
@@ -1334,6 +1470,8 @@ function renderMain(){
   } else if(state.hrAdminTab==="employees"){
     if(!state.selectedId || !state.employees[state.selectedId]) content.appendChild(renderDashboard());
     else content.appendChild(renderEmployeeDetail(state.employees[state.selectedId], state.selectedId));
+  } else if(state.hrAdminTab==="jd"){
+    content.appendChild(renderHrJdTab());
   } else if(state.hrAdminTab==="journey"){
     content.appendChild(renderHrJourneyTemplateTab());
   } else if(state.hrAdminTab==="learning"){
@@ -1395,6 +1533,7 @@ function renderTopbar(){
   const subtitles = {
     dashboard: "ระบบดูแลพนักงานใหม่ตั้งแต่วันแรกจนครบทดลองงาน และกระบวนการเมื่อพนักงานออกจากงาน",
     employees: "รายชื่อพนักงานทั้งหมดในระบบ — เลือกชื่อที่แถบซ้ายเพื่อดูหรือแก้ไขรายละเอียด",
+    jd: "สร้าง แก้ไข และสร้างไฟล์ PDF แบบฟอร์ม Smart Job Description (F-PM-25) พร้อมจัดเก็บลง Google Drive แยกตามฝ่าย/แผนก",
     journey: "แก้ไข \"แม่แบบ\" Onboarding/Offboarding Checklist กลาง — มีผลกับพนักงานใหม่ที่สร้างจากนี้ไป",
     learning: "จัดการหัวข้อนโยบาย/สวัสดิการและรูปภาพที่แสดงใน Learning Center",
     assessment: "จัดการตัวชี้วัดงาน (KPI) มาตรฐานที่ใช้ประเมินพนักงานช่วงทดลองงาน",
@@ -1984,6 +2123,264 @@ function renderHrJourneyTemplateTab(){
       if(confirm("รีเซ็ตแม่แบบนี้กลับเป็นค่าเริ่มต้นของระบบ?")) saveConfig(configKey, null);
     }}, "↺ รีเซ็ตเป็นค่าเริ่มต้น"));
   }
+  return wrap;
+}
+
+/* ============== HR ADMIN: JOB DESCRIPTION (Smart JD, F-PM-25) ============== */
+function renderHrJdTab(){
+  if(state.jdView==="edit" && state.jdSelectedId && state.jobDescriptions[state.jdSelectedId]) return renderJdEdit(state.jdSelectedId);
+  if(state.jdView==="pdf" && state.jdSelectedId && state.jobDescriptions[state.jdSelectedId]) return renderJdPdfView(state.jdSelectedId);
+  return renderJdList();
+}
+
+function jdFieldList(list, items){
+  // items: array of strings; returns a card body of editable rows + add button
+  const rows = (items.length?items:[""]).map((val, idx)=> el("div",{style:"display:flex;gap:8px;padding:8px 16px;border-top:1px solid #f1f2f4;align-items:flex-start;"},[
+    el("textarea",{rows:1, style:"flex:1;resize:vertical;", value:val, onchange:(e)=>{ items[idx]=e.target.value; list.save(items); }}),
+    el("button",{class:"del-btn", title:"ลบรายการนี้", onclick:()=>{ items.splice(idx,1); if(!items.length) items.push(""); list.save(items); render(); }}, "✕")
+  ]));
+  return [
+    ...rows,
+    el("div",{class:"add-item-row"},[
+      el("button",{class:"btn", onclick:()=>{ items.push(""); list.save(items); render(); }}, "＋ เพิ่มรายการ")
+    ])
+  ];
+}
+
+function renderJdList(){
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{class:"lock-note"}, "จัดการแบบฟอร์ม Smart Job Description (F-PM-25) ของทุกตำแหน่งงาน — แก้ไข/ลบได้เฉพาะ HR, สร้างไฟล์ PDF หน้าตาเหมือนต้นฉบับ และบันทึกลง Google Drive แยกโฟลเดอร์ตามฝ่าย/แผนกให้อัตโนมัติ"));
+
+  const all = Object.entries(state.jobDescriptions).map(([id,d])=>({id,...d}));
+  const search = (state.jdSearch||"").toLowerCase();
+  const filtered = all.filter(d=> !search || (d.title||"").toLowerCase().includes(search) || (d.department||"").toLowerCase().includes(search) || (d.division||"").toLowerCase().includes(search));
+
+  const topRow = el("div",{style:"display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:12px;"},[
+    el("input",{placeholder:"ค้นหาตำแหน่งงาน / แผนก / ฝ่าย...", style:"max-width:320px;", value:state.jdSearch||"", oninput:(e)=>{ state.jdSearch=e.target.value; render(); }}),
+    el("button",{class:"btn btn-primary", onclick: createJD}, "＋ สร้าง Job Description ใหม่")
+  ]);
+  wrap.appendChild(topRow);
+
+  if(!filtered.length){
+    wrap.appendChild(el("div",{class:"card", style:"text-align:center;color:var(--sub);padding:28px;"}, all.length? "ไม่พบรายการที่ค้นหา" : "ยังไม่มี Job Description ในระบบ — กด \"สร้าง Job Description ใหม่\" เพื่อเริ่มต้น"));
+    return wrap;
+  }
+
+  // group by ฝ่าย
+  const groups = {};
+  filtered.forEach(d=>{ const k=d.division||"ไม่ระบุฝ่าย"; (groups[k]=groups[k]||[]).push(d); });
+
+  Object.keys(groups).sort((a,b)=>a.localeCompare(b,"th")).forEach(division=>{
+    const rows = groups[division].sort((a,b)=>(a.title||"").localeCompare(b.title||"","th"));
+    const card = el("div",{class:"card", style:"padding:0;margin-bottom:14px;overflow:hidden;"});
+    card.appendChild(el("div",{style:"padding:12px 16px;background:#FAFAFB;border-bottom:1px solid #eef0f2;font-weight:700;font-size:14px;"}, `🏢 ${division} · ${rows.length} ตำแหน่ง`));
+    const table = el("table",{style:"width:100%;border-collapse:collapse;font-size:13.5px;"});
+    table.appendChild(el("tr",{style:"text-align:left;color:var(--sub);font-size:11.5px;"},[
+      el("td",{style:"padding:8px 16px;"},"ตำแหน่งงาน"),
+      el("td",{style:"padding:8px 16px;"},"แผนก"),
+      el("td",{style:"padding:8px 16px;"},"Rev"),
+      el("td",{style:"padding:8px 16px;"},"สถานะ"),
+      el("td",{style:"padding:8px 16px;"},"Google Drive"),
+      el("td",{style:"padding:8px 16px;text-align:right;"},"จัดการ"),
+    ]));
+    rows.forEach(d=>{
+      table.appendChild(el("tr",{style:"border-top:1px solid #f1f2f4;"},[
+        el("td",{style:"padding:10px 16px;font-weight:600;"}, d.title || "(ยังไม่ตั้งชื่อตำแหน่ง)"),
+        el("td",{style:"padding:10px 16px;color:#555;"}, d.department || "-"),
+        el("td",{style:"padding:10px 16px;color:#555;"}, d.revision || "-"),
+        el("td",{style:"padding:10px 16px;"}, el("span",{class:"badge "+jdStatusClass(d.status)}, jdStatusLabel(d.status))),
+        el("td",{style:"padding:10px 16px;"}, d.pdfUrl
+          ? el("a",{href:d.pdfUrl, target:"_blank", rel:"noopener"}, "📄 เปิดไฟล์")
+          : el("span",{style:"color:var(--sub);"}, "ยังไม่สร้าง")),
+        el("td",{style:"padding:10px 16px;text-align:right;white-space:nowrap;"},[
+          el("a",{href:"#", style:"margin-right:14px;", onclick:(e)=>{ e.preventDefault(); state.jdSelectedId=d.id; state.jdView="pdf"; render(); }}, "PDF"),
+          el("a",{href:"#", style:"margin-right:14px;", onclick:(e)=>{ e.preventDefault(); state.jdSelectedId=d.id; state.jdView="edit"; render(); }}, "แก้ไข"),
+          el("a",{href:"#", style:"color:#B3261E;", onclick:(e)=>{ e.preventDefault(); deleteJD(d.id); }}, "ลบ"),
+        ])
+      ]));
+    });
+    card.appendChild(table);
+    wrap.appendChild(card);
+  });
+
+  return wrap;
+}
+
+function renderJdEdit(id){
+  const d = state.jobDescriptions[id];
+  const wrap = el("div",{});
+
+  wrap.appendChild(el("div",{style:"display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;"},[
+    el("a",{href:"#", onclick:(e)=>{ e.preventDefault(); state.jdView="list"; render(); }}, "← กลับไปรายการ Job Description"),
+    el("div",{style:"display:flex;gap:8px;"},[
+      el("button",{class:"btn", onclick:()=>{ state.jdView="pdf"; render(); }}, "👁 ดูตัวอย่าง PDF"),
+      el("button",{class:"btn btn-danger", onclick:()=> deleteJD(id)}, "ลบ"),
+    ])
+  ]));
+
+  const header = el("div",{class:"card", style:"margin-bottom:14px;"},[
+    el("div",{style:"font-weight:700;font-size:15px;margin-bottom:10px;"}, "ข้อมูลเอกสาร (Document 04 · F-PM-25)"),
+    el("div",{class:"field-grid"},[
+      el("div",{class:"field"},[el("label",{},"ฝ่าย"), el("input",{value:d.division||"", onchange:(e)=>saveJD(id,{division:e.target.value})})]),
+      el("div",{class:"field"},[el("label",{},"แผนก"), el("input",{value:d.department||"", onchange:(e)=>saveJD(id,{department:e.target.value})})]),
+      el("div",{class:"field"},[el("label",{},"ส่วน"), el("input",{value:d.section||"", onchange:(e)=>saveJD(id,{section:e.target.value})})]),
+      el("div",{class:"field"},[el("label",{},"ตำแหน่งงาน"), el("input",{value:d.title||"", onchange:(e)=>saveJD(id,{title:e.target.value})})]),
+      el("div",{class:"field"},[el("label",{},"Revision"), el("input",{value:d.revision||"", onchange:(e)=>saveJD(id,{revision:e.target.value})})]),
+      el("div",{class:"field"},[el("label",{},"Effective Date"), el("input",{value:d.effectiveDate||"", onchange:(e)=>saveJD(id,{effectiveDate:e.target.value})})]),
+      el("div",{class:"field"},[el("label",{},"สถานะ"),
+        el("select",{onchange:(e)=>saveJD(id,{status:e.target.value})},[
+          el("option",{value:"draft", selected:d.status==="draft"?"selected":null},"ฉบับร่าง"),
+          el("option",{value:"pending", selected:d.status==="pending"?"selected":null},"รออนุมัติ"),
+          el("option",{value:"approved", selected:d.status==="approved"?"selected":null},"อนุมัติแล้ว"),
+        ])]),
+    ])
+  ]);
+  wrap.appendChild(header);
+
+  function section(label, key){
+    const items = [...(d[key]&&d[key].length?d[key]:[""])];
+    const card = el("div",{class:"phase-card"});
+    card.appendChild(el("div",{class:"phase-head"},[ el("div",{style:"font-weight:700;font-size:13.5px;"}, label) ]));
+    jdFieldList({save:(vals)=>saveJD(id,{[key]:vals})}, items).forEach(n=>card.appendChild(n));
+    wrap.appendChild(card);
+  }
+
+  section("ส่วนที่ 1 : วัตถุประสงค์ที่บริษัทมีหน่วยงานและตำแหน่งงาน (Objectives)", "objectives");
+  section("ส่วนที่ 2 : หน้าที่ความรับผิดชอบหลัก (Key responsibilities)", "responsibilities");
+  section("ส่วนที่ 3 : ตัวชี้วัดผลงานตามหน้าที่ความรับผิดชอบ (Performance Indicators)", "kpis");
+
+  const q = d.qualifications || {};
+  const qCard = el("div",{class:"phase-card"});
+  qCard.appendChild(el("div",{class:"phase-head"},[el("div",{style:"font-weight:700;font-size:13.5px;"},"ส่วนที่ 4 : คุณสมบัติผู้ดำรงตำแหน่ง (ต้องมีก่อนสมัครงาน)")]));
+  [["age","อายุตัว"],["education","วุฒิการศึกษา"],["major","สาขา"],["experience","ประสบการณ์ทำงาน"],["licenses","ใบอนุญาตต่างๆ"],["others","อื่นๆ"]].forEach(([k,label])=>{
+    qCard.appendChild(el("div",{style:"display:flex;gap:10px;padding:8px 16px;border-top:1px solid #f1f2f4;align-items:center;"},[
+      el("div",{style:"width:150px;flex-shrink:0;color:#6B7280;font-weight:600;font-size:13px;"}, label),
+      el("input",{style:"flex:1;", value:q[k]||"", onchange:(e)=>saveJD(id,{qualifications:{...q,[k]:e.target.value}})})
+    ]));
+  });
+  wrap.appendChild(qCard);
+
+  const roleCard = el("div",{class:"phase-card"});
+  roleCard.appendChild(el("div",{class:"phase-head"},[el("div",{style:"font-weight:700;font-size:13.5px;"},"ส่วนที่ 5 : บทบาทผู้ดำรงตำแหน่ง")]));
+  roleCard.appendChild(el("div",{style:"padding:8px 16px;border-top:1px solid #f1f2f4;"},[el("label",{style:"font-size:12px;color:#6B7280;font-weight:600;"},"5.1 อำนาจดำเนินการ"), el("input",{value:d.authority||"", onchange:(e)=>saveJD(id,{authority:e.target.value})})]));
+  roleCard.appendChild(el("div",{style:"padding:8px 16px;border-top:1px solid #f1f2f4;"},[el("label",{style:"font-size:12px;color:#6B7280;font-weight:600;"},"5.2 สายบังคับบัญชา"), el("input",{value:d.chain||"", onchange:(e)=>saveJD(id,{chain:e.target.value})})]));
+  wrap.appendChild(roleCard);
+
+  section("ส่วนที่ 6.1 : ความรู้/ทักษะ (Knowledge & Skills/Functional competencies)", "knowledgeSkills");
+  section("ส่วนที่ 6.2 : คุณลักษณะ (Personality/Attitude/Mental abilities)", "personality");
+  section("ส่วนที่ 7 : การนำ Job Description ไปใช้งาน", "usage");
+
+  const s = d.signers || {};
+  const sigCard = el("div",{class:"phase-card"});
+  sigCard.appendChild(el("div",{class:"phase-head"},[el("div",{style:"font-weight:700;font-size:13.5px;"},"ผู้ลงนาม (ส่วนท้ายเอกสาร)")]));
+  [
+    ["employeeName","พนักงาน ลงชื่อรับทราบ",null],
+    ["deptManagerName","ผู้จัดการแผนก (ผู้จัดทำ)","deptManagerPosition"],
+    ["sectionManagerName","ผู้จัดการส่วน","sectionManagerPosition"],
+    ["divisionManagerName","ผู้จัดการฝ่าย (ผู้อนุมัติ)","divisionManagerPosition"],
+    ["hrName","แผนกบุคคล รับทราบ","hrPosition"],
+  ].forEach(([nameKey,label,posKey])=>{
+    sigCard.appendChild(el("div",{style:"display:flex;gap:10px;padding:8px 16px;border-top:1px solid #f1f2f4;align-items:center;flex-wrap:wrap;"},[
+      el("div",{style:"width:220px;flex-shrink:0;color:#6B7280;font-weight:600;font-size:13px;"}, label),
+      el("input",{style:"flex:1;min-width:160px;", placeholder:"ชื่อ-นามสกุล", value:s[nameKey]||"", onchange:(e)=>saveJD(id,{signers:{...s,[nameKey]:e.target.value}})}),
+      posKey ? el("input",{style:"flex:1;min-width:160px;", placeholder:"ตำแหน่ง", value:s[posKey]||"", onchange:(e)=>saveJD(id,{signers:{...s,[posKey]:e.target.value}})}) : null
+    ]));
+  });
+  wrap.appendChild(sigCard);
+
+  const driveCard = el("div",{class:"card", style:"background:#FAFAFB;"},[
+    el("div",{style:"font-weight:700;font-size:14px;margin-bottom:6px;"}, "📁 ที่จัดเก็บบน Google Drive"),
+    el("div",{style:"font-size:12.5px;color:#555;font-family:monospace;background:#fff;border:1px solid #E7E9EC;border-radius:8px;padding:10px;"},
+      `HROD - Job Description / ${d.division||"(ฝ่าย)"} / ${d.department||"(แผนก)"} / F-PM-25_${d.title||"(ตำแหน่ง)"}_Rev${d.revision||"-"}.pdf`),
+    d.pdfUrl ? el("div",{style:"margin-top:8px;font-size:12.5px;"}, [el("a",{href:d.pdfUrl, target:"_blank", rel:"noopener"},"📄 เปิดไฟล์ล่าสุด"), " · อัปเดต "+fmtDate(d.pdfUpdatedAt)]) : null,
+    el("button",{class:"btn btn-primary btn-block", style:"margin-top:10px;", disabled: state.jdGenerating?"disabled":null, onclick:()=>generateJdPdf(id)}, state.jdGenerating? "กำลังสร้าง..." : "📄 สร้าง PDF และบันทึกลง Google Drive")
+  ]);
+  wrap.appendChild(driveCard);
+
+  return wrap;
+}
+
+function renderJdPdfView(id){
+  const d = state.jobDescriptions[id];
+  const wrap = el("div",{});
+  wrap.appendChild(el("div",{style:"display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;"},[
+    el("a",{href:"#", onclick:(e)=>{ e.preventDefault(); state.jdView="edit"; render(); }}, "← กลับไปแก้ไข"),
+    el("div",{style:"display:flex;gap:8px;"},[
+      d.pdfUrl ? el("a",{href:d.pdfUrl, target:"_blank", rel:"noopener"}, el("button",{class:"btn"}, "⬇ เปิด/ดาวน์โหลด PDF ล่าสุด")) : null,
+      el("button",{class:"btn btn-primary", disabled: state.jdGenerating?"disabled":null, onclick:()=>generateJdPdf(id)}, state.jdGenerating? "กำลังสร้าง..." : "📁 สร้าง/อัปเดต PDF ลง Google Drive")
+    ]
+    )
+  ]));
+
+  const sheet = el("div",{style:"max-width:860px;margin:0 auto;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.14);padding:26px 30px;font-size:11px;"});
+  const jd = tbl=>el("table",{style:"border-collapse:collapse;width:100%;font-size:10.5px;margin-bottom:0;"}, tbl);
+  const td = (html, style)=> el("td",{style:"border:0.8px solid #444;padding:4px 6px;vertical-align:top;"+(style||""), html});
+  const secHead = (label)=> el("tr",{},[el("td",{colspan:"2", style:"border:0.8px solid #444;background:#1a1a1a;color:#fff;font-weight:700;padding:3px 6px;font-size:10.5px;"}, label)]);
+  const secRow = (text)=> el("tr",{},[el("td",{colspan:"2", style:"border:0.8px solid #444;padding:4px 6px;height:17px;"}, text || "")]);
+
+  sheet.appendChild(jd([
+    el("tr",{},[
+      el("td",{rowspan:"2", style:"border:0.8px solid #444;width:30%;text-align:center;vertical-align:middle;padding:6px;"},[
+        el("div",{style:"font-weight:800;font-size:15px;color:#C0272D;"}, "◆ ALLIED-TEK")
+      ]),
+      td("Document<br>F-PM-25","width:16%;font-weight:700;"),
+      td("รายละเอียดงาน (Smart Job Description)","width:30%;text-align:center;font-weight:700;"),
+      td("Revision:","width:12%;font-weight:700;"),
+      td(d.revision||"04","width:12%;"),
+    ]),
+    el("tr",{},[
+      td("Effective Date:","font-weight:700;"),
+      td(d.effectiveDate||"","text-align:center;"),
+      td("Page","font-weight:700;"),
+      td("1 of 1"),
+    ])
+  ]));
+  sheet.appendChild(el("div",{style:"font-weight:700;font-size:12px;margin:6px 0 4px;"},"Smart Job Description"));
+  sheet.appendChild(jd([el("tr",{},[
+    td(`<b>แผนก :</b> ${d.department||""}`,"width:33%;"),
+    td(`<b>ส่วน :</b> ${d.section||""}`,"width:33%;"),
+    td(`<b>ฝ่าย :</b> ${d.division||""}`,"width:34%;"),
+  ])]));
+
+  const rows = [];
+  rows.push(el("tr",{},[td("ส่วนประกอบของ Smart Job Description","width:50%;background:#f3f3f3;font-weight:700;"), td("ตำแหน่งงาน","background:#f3f3f3;font-weight:700;text-align:center;")]));
+  rows.push(el("tr",{},[el("td",{colspan:"2", style:"border:0.8px solid #444;padding:4px 6px;text-align:center;font-weight:600;"}, d.title||"")]));
+  rows.push(secHead("ส่วนที่ 1 : วัตถุประสงค์ที่บริษัทมีหน่วยงานและตำแหน่งงาน (Objectives)"));
+  (d.objectives||[]).forEach(t=>rows.push(secRow(t)));
+  rows.push(secHead("ส่วนที่ 2 : หน้าที่ความรับผิดชอบหลัก (Key responsibilities)"));
+  (d.responsibilities||[]).forEach(t=>rows.push(secRow(t)));
+  rows.push(secHead("ส่วนที่ 3 : ตัวชี้วัดผลงานตามหน้าที่ความรับผิดชอบ (Performance Indicators)"));
+  (d.kpis||[]).forEach(t=>rows.push(secRow(t)));
+  rows.push(secHead("ส่วนที่ 4 : คุณสมบัติผู้ดำรงตำแหน่ง (ต้องมีก่อนสมัครงาน)"));
+  const q = d.qualifications||{};
+  [["อายุตัว",q.age],["วุฒิการศึกษา",q.education],["สาขา",q.major],["ประสบการณ์ทำงาน",q.experience],["ใบอนุญาตต่างๆ",q.licenses],["อื่นๆ",q.others]].forEach(([label,val])=>{
+    rows.push(el("tr",{},[td(label,"font-weight:600;width:22%;"), td(val||"")]));
+  });
+  rows.push(secHead("ส่วนที่ 5 : บทบาทผู้ดำรงตำแหน่ง"));
+  rows.push(el("tr",{},[td("5.1 อำนาจดำเนินการ","font-weight:600;"), td(d.authority||"")]));
+  rows.push(el("tr",{},[td("5.2 สายบังคับบัญชา","font-weight:600;"), td(d.chain||"")]));
+  rows.push(secHead("ส่วนที่ 6 : ความรู้ทักษะและคุณลักษณะที่จำเป็นต้องมีคือ (Job Competencies)"));
+  rows.push(el("tr",{},[el("td",{colspan:"2", style:"border:0.8px solid #444;font-weight:700;background:#f7f7f7;padding:4px 6px;"},"6.1 ความรู้/ทักษะ (Knowledge & Skills/Functional competencies)")]));
+  (d.knowledgeSkills||[]).forEach(t=>rows.push(secRow(t)));
+  rows.push(el("tr",{},[el("td",{colspan:"2", style:"border:0.8px solid #444;font-weight:700;background:#f7f7f7;padding:4px 6px;"},"6.2 คุณลักษณะ (Personality/Attitude/Mental abilities)")]));
+  (d.personality||[]).forEach(t=>rows.push(secRow(t)));
+  rows.push(secHead("ส่วนที่ 7 : การนำ Job Description ไปใช้งาน"));
+  (d.usage||[]).forEach(t=>rows.push(secRow(t)));
+  sheet.appendChild(jd(rows));
+
+  const s = d.signers||{};
+  function sigTd(label, name, position){
+    return td(`${label}<br><br>ลงชื่อ..........................<br>( ${name||"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"} )<br>ตำแหน่ง ${position||".........................."}<br>วันที่ ..........................`, "width:20%;text-align:center;");
+  }
+  sheet.appendChild(jd([el("tr",{},[
+    sigTd("พนักงาน ลงชื่อรับทราบ", s.employeeName, ""),
+    sigTd("ผู้จัดการแผนก (ผู้จัดทำ)", s.deptManagerName, s.deptManagerPosition),
+    sigTd("ผู้จัดการส่วน", s.sectionManagerName, s.sectionManagerPosition),
+    sigTd("ผู้จัดการฝ่าย (ผู้อนุมัติ)", s.divisionManagerName, s.divisionManagerPosition),
+    sigTd("แผนกบุคคล รับทราบ", s.hrName, s.hrPosition),
+  ])]));
+
+  wrap.appendChild(el("div",{style:"background:#E8E9EC;padding:20px;border-radius:12px;"},[sheet]));
   return wrap;
 }
 

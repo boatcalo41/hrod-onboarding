@@ -45,6 +45,8 @@
 
 var SHEET_NAME = 'employees';
 var CONFIG_SHEET_NAME = 'config';
+var JD_SHEET_NAME = 'job_descriptions';
+var JD_DRIVE_ROOT_FOLDER_NAME = 'HROD - Job Description';
 
 function doGet(e) {
   try {
@@ -53,7 +55,8 @@ function doGet(e) {
       return jsonResponse({
         ok: true,
         employees: listEmployees(),
-        config: listConfig()
+        config: listConfig(),
+        jobDescriptions: listJobDescriptions()
       });
     }
     return jsonResponse({ ok: false, error: 'unknown action: ' + action });
@@ -77,6 +80,18 @@ function doPost(e) {
     if (action === 'setConfig') {
       upsertRow_(getConfigSheet_(), body.key, body.data);
       return jsonResponse({ ok: true });
+    }
+    if (action === 'setJD') {
+      upsertJdRow_(body.id, body.data);
+      return jsonResponse({ ok: true });
+    }
+    if (action === 'deleteJD') {
+      deleteRow_(getJdSheet_(), body.id);
+      return jsonResponse({ ok: true });
+    }
+    if (action === 'generateJdPdf') {
+      var result = generateJdPdf_(body.id, body.data);
+      return jsonResponse({ ok: true, pdfUrl: result.pdfUrl, pdfFileId: result.pdfFileId, pdfUpdatedAt: result.pdfUpdatedAt });
     }
     return jsonResponse({ ok: false, error: 'unknown action: ' + action });
   } catch (err) {
@@ -215,4 +230,227 @@ function deleteRow_(sheet, id) {
 function jsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ============== JOB DESCRIPTION (Smart JD, F-PM-25) ==============
+ * Sheet "job_descriptions": same id/json/updatedAt shape as "employees",
+ * plus read-only summary columns (D..H) so HR can scan the sheet directly:
+ *   D: ตำแหน่งงาน  E: ฝ่าย  F: แผนก  G: สถานะ  H: ลิงก์ PDF ล่าสุด
+ * Each row's JSON is the full Smart JD record (see README.md / the app's
+ * jd-edit screen for the field list): title/division/department/section,
+ * the 7 form sections, qualifications, signers, revision/effectiveDate,
+ * and — once generated — pdfUrl/pdfFileId/pdfUpdatedAt.
+ */
+var JD_SUMMARY_HEADERS = ['ตำแหน่งงาน', 'ฝ่าย', 'แผนก', 'สถานะ', 'ลิงก์ PDF ล่าสุด'];
+
+function getJdSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(JD_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(JD_SHEET_NAME);
+    sheet.appendRow(['id', 'json', 'updatedAt'].concat(JD_SUMMARY_HEADERS));
+  }
+  return sheet;
+}
+
+function jdSummaryRow_(data) {
+  var statusLabel = { draft: 'ฉบับร่าง', pending: 'รออนุมัติ', approved: 'อนุมัติแล้ว' }[data.status] || (data.status || '');
+  return [
+    data.title || '',
+    data.division || '',
+    data.department || '',
+    statusLabel,
+    data.pdfUrl || ''
+  ];
+}
+
+function upsertJdRow_(id, data) {
+  if (!id) throw new Error('missing id');
+  var sheet = getJdSheet_();
+  var row = findRow_(sheet, id);
+  var json = JSON.stringify(data);
+  var now = new Date().toISOString();
+  var summary = jdSummaryRow_(data);
+  if (row === -1) {
+    sheet.appendRow([id, json, now].concat(summary));
+  } else {
+    sheet.getRange(row, 2).setValue(json);
+    sheet.getRange(row, 3).setValue(now);
+    sheet.getRange(row, 4, 1, summary.length).setValues([summary]);
+  }
+}
+
+function listJobDescriptions() {
+  var sheet = getJdSheet_();
+  var values = sheet.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var id = values[i][0];
+    var json = values[i][1];
+    var updatedAt = values[i][2];
+    if (!id) continue;
+    try {
+      out.push({ id: String(id), data: JSON.parse(json), updatedAt: updatedAt });
+    } catch (parseErr) {
+      // skip a row that doesn't contain valid JSON
+    }
+  }
+  return out;
+}
+
+/* ---- PDF generation + Google Drive storage, grouped by ฝ่าย/แผนก ---- */
+
+function getOrCreateSubfolder_(parent, name) {
+  name = (name || 'ไม่ระบุ').toString().trim() || 'ไม่ระบุ';
+  var it = parent.getFoldersByName(name);
+  if (it.hasNext()) return it.next();
+  return parent.createFolder(name);
+}
+
+function getJdRootFolder_() {
+  var it = DriveApp.getFoldersByName(JD_DRIVE_ROOT_FOLDER_NAME);
+  if (it.hasNext()) return it.next();
+  return DriveApp.createFolder(JD_DRIVE_ROOT_FOLDER_NAME);
+}
+
+function sanitizeFileNamePart_(s) {
+  return String(s || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Builds a Google Doc that mirrors the F-PM-25 "Smart Job Description" table
+// layout (header block, 7 numbered sections, signature block), exports it
+// as a PDF, uploads the PDF into Drive under ฝ่าย/แผนก, deletes the
+// scratch Doc, stamps the JD record with the new file's link, and returns
+// the summary used by the client + written back into the sheet row.
+function generateJdPdf_(id, data) {
+  if (!id) throw new Error('missing id');
+  data = data || {};
+
+  var doc = DocumentApp.create('tmp-jd-' + id);
+  var body = doc.getBody();
+  body.setMarginTop(28).setMarginBottom(28).setMarginLeft(28).setMarginRight(28);
+  var FONT = 'Sarabun';
+
+  function styleCell(cell, opts) {
+    opts = opts || {};
+    var par = cell.getChild(0).asParagraph();
+    par.setFontFamily(FONT).setFontSize(opts.size || 10);
+    if (opts.bold) par.setBold(true);
+    if (opts.align) par.setAlignment(opts.align);
+    if (opts.color) par.editAsText().setForegroundColor(opts.color);
+    if (opts.bg) cell.setBackgroundColor(opts.bg);
+    cell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(5).setPaddingRight(5);
+    return par;
+  }
+
+  // Header: Document / title / Revision / Effective date / Page
+  var head = body.appendTable([
+    ['ALLIED-TEK', 'Document\nF-PM-25', 'รายละเอียดงาน (Smart Job Description)', 'Revision:\n' + (data.revision || '04')],
+    ['', 'Effective Date:\n' + (data.effectiveDate || '02 Apr 2025'), '', 'Page 1 of 1']
+  ]);
+  for (var r = 0; r < head.getNumRows(); r++) {
+    for (var c = 0; c < head.getRow(r).getNumCells(); c++) {
+      styleCell(head.getRow(r).getCell(c), { size: 9, bold: (c !== 2), align: c === 2 ? DocumentApp.HorizontalAlignment.CENTER : null });
+    }
+  }
+  head.getRow(0).getCell(0).setBackgroundColor('#ffffff');
+
+  styleCell(body.appendTable([[
+    'แผนก : ' + (data.department || ''), 'ส่วน : ' + (data.section || ''), 'ฝ่าย : ' + (data.division || '')
+  ]]).getRow(0).getCell(0), { size: 9 });
+
+  var posTable = body.appendTable([['ส่วนประกอบของ Smart Job Description', 'ตำแหน่งงาน']]);
+  styleCell(posTable.getRow(0).getCell(0), { size: 9, bold: true, bg: '#f3f3f3' });
+  styleCell(posTable.getRow(0).getCell(1), { size: 9, bold: true, bg: '#f3f3f3', align: DocumentApp.HorizontalAlignment.CENTER });
+  var posRow = body.appendTable([['', data.title || '']]);
+  styleCell(posRow.getRow(0).getCell(1), { size: 10, bold: true, align: DocumentApp.HorizontalAlignment.CENTER });
+
+  function sectionHeader(label) {
+    var t = body.appendTable([[label]]);
+    styleCell(t.getRow(0).getCell(0), { size: 9.5, bold: true, bg: '#1a1a1a', color: '#ffffff' });
+  }
+  function sectionRows(list) {
+    (list && list.length ? list : ['']).forEach(function (line) {
+      var t = body.appendTable([[line || '']]);
+      styleCell(t.getRow(0).getCell(0), { size: 10 });
+    });
+  }
+  function kvRows(pairs) {
+    pairs.forEach(function (pair) {
+      var t = body.appendTable([[pair[0], pair[1] || '']]);
+      styleCell(t.getRow(0).getCell(0), { size: 10, bold: true });
+      styleCell(t.getRow(0).getCell(1), { size: 10 });
+    });
+  }
+
+  sectionHeader('ส่วนที่ 1 : วัตถุประสงค์ที่บริษัทมีหน่วยงานและตำแหน่งงาน (Objectives)');
+  sectionRows(data.objectives);
+
+  sectionHeader('ส่วนที่ 2 : หน้าที่ความรับผิดชอบหลัก (Key responsibilities)');
+  sectionRows(data.responsibilities);
+
+  sectionHeader('ส่วนที่ 3 : ตัวชี้วัดผลงานตามหน้าที่ความรับผิดชอบ (Performance Indicators)');
+  sectionRows(data.kpis);
+
+  sectionHeader('ส่วนที่ 4 : คุณสมบัติผู้ดำรงตำแหน่ง (ต้องมีก่อนสมัครงาน)');
+  var q = data.qualifications || {};
+  kvRows([
+    ['อายุตัว', q.age], ['วุฒิการศึกษา', q.education], ['สาขา', q.major],
+    ['ประสบการณ์ทำงาน', q.experience], ['ใบอนุญาตต่างๆ', q.licenses], ['อื่นๆ', q.others]
+  ]);
+
+  sectionHeader('ส่วนที่ 5 : บทบาทผู้ดำรงตำแหน่ง');
+  kvRows([['5.1 อำนาจดำเนินการ', data.authority], ['5.2 สายบังคับบัญชา', data.chain]]);
+
+  sectionHeader('ส่วนที่ 6 : ความรู้ ทักษะและคุณลักษณะที่จำเป็นต้องมีคือ (Job Competencies)');
+  var skillHead = body.appendTable([['6.1 ความรู้/ทักษะ (Knowledge & Skills/Functional competencies)']]);
+  styleCell(skillHead.getRow(0).getCell(0), { size: 9.5, bold: true, bg: '#f7f7f7' });
+  sectionRows(data.knowledgeSkills);
+  var persHead = body.appendTable([['6.2 คุณลักษณะ (Personality/Attitude/Mental abilities)']]);
+  styleCell(persHead.getRow(0).getCell(0), { size: 9.5, bold: true, bg: '#f7f7f7' });
+  sectionRows(data.personality);
+
+  sectionHeader('ส่วนที่ 7 : การนำ Job Description ไปใช้งาน');
+  sectionRows(data.usage);
+
+  // Signature block
+  var s = data.signers || {};
+  function sigCell(label, name, position) {
+    return label + '\n\nลงชื่อ.......................\n(' + (name || '                    ') + ')\nตำแหน่ง ' + (position || '.......................') + '\nวันที่ .......................';
+  }
+  var sigTable = body.appendTable([[
+    sigCell('พนักงาน ลงชื่อรับทราบ', s.employeeName, ''),
+    sigCell('ผู้จัดการแผนก (ผู้จัดทำ)', s.deptManagerName, s.deptManagerPosition),
+    sigCell('ผู้จัดการส่วน', s.sectionManagerName, s.sectionManagerPosition),
+    sigCell('ผู้จัดการฝ่าย (ผู้อนุมัติ)', s.divisionManagerName, s.divisionManagerPosition),
+    sigCell('แผนกบุคคล รับทราบ', s.hrName, s.hrPosition)
+  ]]);
+  for (var sc = 0; sc < sigTable.getRow(0).getNumCells(); sc++) {
+    styleCell(sigTable.getRow(0).getCell(sc), { size: 8, align: DocumentApp.HorizontalAlignment.CENTER });
+  }
+
+  doc.saveAndClose();
+
+  var pdfBlob = DriveApp.getFileById(doc.getId()).getAs('application/pdf');
+  var root = getJdRootFolder_();
+  var divisionFolder = getOrCreateSubfolder_(root, data.division);
+  var deptFolder = getOrCreateSubfolder_(divisionFolder, data.department);
+  var fileName = 'F-PM-25_' + sanitizeFileNamePart_(data.title || id) + '_Rev' + sanitizeFileNamePart_(data.revision || '04') + '.pdf';
+
+  // Replace a previous PDF of the same name so re-generating doesn't pile up copies.
+  var existing = deptFolder.getFilesByName(fileName);
+  while (existing.hasNext()) existing.next().setTrashed(true);
+
+  var pdfFile = deptFolder.createFile(pdfBlob).setName(fileName);
+  DriveApp.getFileById(doc.getId()).setTrashed(true); // drop the scratch Doc, keep only the PDF
+
+  var now = new Date().toISOString();
+  var merged = Object.assign({}, data, {
+    pdfUrl: pdfFile.getUrl(),
+    pdfFileId: pdfFile.getId(),
+    pdfUpdatedAt: now
+  });
+  upsertJdRow_(id, merged);
+
+  return { pdfUrl: pdfFile.getUrl(), pdfFileId: pdfFile.getId(), pdfUpdatedAt: now };
 }
