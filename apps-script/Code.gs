@@ -47,6 +47,10 @@ var SHEET_NAME = 'employees';
 var CONFIG_SHEET_NAME = 'config';
 var JD_SHEET_NAME = 'job_descriptions';
 var JD_DRIVE_ROOT_FOLDER_NAME = 'HROD - Job Description';
+// Same logo the HROD web app shows (assets/logo.png), served from GitHub
+// Pages — fetched fresh each time a JD PDF is generated so the printed
+// form always matches the app's current logo.
+var ALLIED_TEK_LOGO_URL = 'https://boatcalo41.github.io/hrod-onboarding/assets/logo.png';
 
 function doGet(e) {
   try {
@@ -313,6 +317,25 @@ function getJdRootFolder_() {
   return DriveApp.createFolder(JD_DRIVE_ROOT_FOLDER_NAME);
 }
 
+// Drops the ALLIED-TEK logo into a table cell, sized to fit the header
+// strip. Falls back to plain bold text if the fetch fails (e.g. the site
+// is briefly unreachable) so PDF generation never breaks on this.
+function insertLogo_(cell) {
+  try {
+    var blob = UrlFetchApp.fetch(ALLIED_TEK_LOGO_URL, { muteHttpExceptions: true }).getBlob();
+    var img = cell.getChild(0).asParagraph().appendInlineImage(blob);
+    var w = img.getWidth(), h = img.getHeight();
+    var maxW = 130;
+    if (w > maxW) { img.setWidth(maxW); img.setHeight(Math.round(h * (maxW / w))); }
+    cell.getChild(0).asParagraph().setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  } catch (err) {
+    var par = cell.getChild(0).asParagraph();
+    par.setText('ALLIED-TEK').setBold(true).setFontSize(13);
+    par.editAsText().setForegroundColor('#C0272D');
+    par.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  }
+}
+
 function sanitizeFileNamePart_(s) {
   return String(s || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -345,7 +368,7 @@ function generateJdPdf_(id, data) {
 
   // Header: Document / title / Revision / Effective date / Page
   var head = body.appendTable([
-    ['ALLIED-TEK', 'Document\nF-PM-25', 'รายละเอียดงาน (Smart Job Description)', 'Revision:\n' + (data.revision || '04')],
+    ['', 'Document\nF-PM-25', 'รายละเอียดงาน (Smart Job Description)', 'Revision:\n' + (data.revision || '04')],
     ['', 'Effective Date:\n' + (data.effectiveDate || '02 Apr 2025'), '', 'Page 1 of 1']
   ]);
   for (var r = 0; r < head.getNumRows(); r++) {
@@ -353,7 +376,9 @@ function generateJdPdf_(id, data) {
       styleCell(head.getRow(r).getCell(c), { size: 9, bold: (c !== 2), align: c === 2 ? DocumentApp.HorizontalAlignment.CENTER : null });
     }
   }
-  head.getRow(0).getCell(0).setBackgroundColor('#ffffff');
+  var logoCell = head.getRow(0).getCell(0);
+  logoCell.setBackgroundColor('#ffffff');
+  insertLogo_(logoCell);
 
   styleCell(body.appendTable([[
     'แผนก : ' + (data.department || ''), 'ส่วน : ' + (data.section || ''), 'ฝ่าย : ' + (data.division || '')
