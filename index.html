@@ -192,6 +192,11 @@
   .passport-header .pp-brand small{display:block;font-weight:400;font-size:12px;opacity:.85;margin-top:2px;letter-spacing:0;}
   .passport-header .pp-title{position:relative;margin-top:16px;font-size:23px;font-weight:800;letter-spacing:.4px;}
   .passport-header .pp-sub{position:relative;font-size:13px;opacity:.92;margin-top:2px;letter-spacing:.3px;}
+  .pp-photo-wrap{position:absolute;top:24px;right:28px;z-index:2;}
+  .pp-photo{width:76px;height:76px;border-radius:50%;object-fit:cover;background:#fff;border:3px solid rgba(255,255,255,.85);box-shadow:0 4px 12px rgba(0,0,0,.25);display:block;}
+  .pp-photo-placeholder{width:76px;height:76px;border-radius:50%;background:rgba(255,255,255,.18);border:3px solid rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;}
+  .pp-photo-edit-btn{position:absolute;bottom:-2px;right:-2px;width:26px;height:26px;border-radius:50%;background:#fff;color:var(--brand);border:none;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25);}
+  .pp-photo-edit-btn:disabled{opacity:.6;cursor:wait;}
   .passport-body{padding:26px 30px;position:relative;}
   .passport-body::before{content:"ALLIED-TEK";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     font-size:92px;font-weight:800;color:var(--brand);opacity:.025;letter-spacing:4px;transform:rotate(-18deg);
@@ -851,6 +856,8 @@ const state = {
   portalReflectDraft: null, // in-progress answers for the round currently open — kept OUT of state.employees so
                              // the 4s poll (which overwrites state.employees wholesale from the server) can never
                              // wipe an unsaved draft; only merged in via saveEmployee once ส่งคำตอบ succeeds
+  photoUploading: false,   // true while a profile-photo upload is in flight (Employee Portal)
+  photoUploadError: "",
 };
 
 /* ============== DATA LAYER (Google Sheets via Apps Script Web App) ==============
@@ -962,6 +969,23 @@ async function apiDeleteJD(id){
 // original F-PM-25 layout and file it into Google Drive under ฝ่าย/แผนก.
 // Returns { pdfUrl, pdfFileId, pdfUpdatedAt } — the caller merges that into
 // the record (the backend also persists the merged record itself).
+// Uploads a profile photo for employee `id`. `base64` is the raw base64
+// payload (no "data:image/...;base64," prefix — strip that before calling).
+// Returns {photoUrl, photoFileId, photoUpdatedAt}; the caller merges that
+// into the employee record the same way apiGenerateJdPdf's result is merged.
+async function apiUploadPhoto(id, filename, mimeType, base64){
+  const url = getApiUrl();
+  if(!url) throw new Error("no-api-url");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "uploadPhoto", id, filename, mimeType, base64 })
+  });
+  const body = await res.json();
+  if(!body.ok) throw new Error(body.error || "api error");
+  return { photoUrl: body.photoUrl, photoFileId: body.photoFileId, photoUpdatedAt: body.photoUpdatedAt };
+}
+
 async function apiGenerateJdPdf(id, data){
   const url = getApiUrl();
   if(!url) throw new Error("no-api-url");
@@ -1043,6 +1067,54 @@ async function saveEmployee(id, patch){
   }catch(e){
     toast("บันทึกไม่สำเร็จ: " + (e.message||e));
     console.error(e);
+  }
+}
+
+// Reads an <input type=file> image, center-crops it to a square and scales
+// it down to 400x400 client-side (so we never upload a multi-MB photo
+// straight from a phone camera), then sends it to the backend. The backend
+// persists photoUrl/photoFileId straight onto the employee's own row, so we
+// just need to merge the returned URL into local state once it's back.
+async function uploadEmployeePhoto(id, file){
+  if(!file) return;
+  if(!/^image\//.test(file.type)){
+    state.photoUploadError = "เลือกไฟล์รูปภาพเท่านั้น (jpg, png)";
+    render();
+    return;
+  }
+  state.photoUploading = true;
+  state.photoUploadError = "";
+  render();
+  try{
+    const dataUrl = await new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=> resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const img = await new Promise((resolve, reject)=>{
+      const im = new Image();
+      im.onload = ()=> resolve(im);
+      im.onerror = reject;
+      im.src = dataUrl;
+    });
+    const SIZE = 400;
+    const side = Math.min(img.width, img.height);
+    const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = SIZE; canvas.height = SIZE;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
+    const outDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+    const base64 = outDataUrl.split(",")[1];
+    const { photoUrl, photoFileId, photoUpdatedAt } = await apiUploadPhoto(id, "profile.jpg", "image/jpeg", base64);
+    state.employees[id] = { ...(state.employees[id]||{}), photoUrl, photoFileId, photoUpdatedAt };
+  }catch(e){
+    state.photoUploadError = "อัปโหลดรูปไม่สำเร็จ: " + (e.message||e);
+    console.error(e);
+  }finally{
+    state.photoUploading = false;
+    render();
   }
 }
 
@@ -2724,6 +2796,11 @@ function renderPassportTab(emp, id){
   const phaseKeys = [["phase1","เฟส 1 · ก่อนเริ่มงาน"],["phase2","เฟส 2 · Day 1–7"],["phase3","เฟส 3 · 30–90 วัน"],["phase4","เฟส 4 · 90–120 วัน"]];
   const wrap = el("div",{});
   wrap.appendChild(el("button",{class:"btn pp-print-btn", onclick:()=>window.print()}, "🖨️ พิมพ์ / บันทึกเป็น PDF"));
+  if(state.photoUploadError){
+    wrap.appendChild(el("div",{class:"lock-note", style:"color:var(--bad);margin-bottom:10px;"}, state.photoUploadError));
+  }
+  const canEditPhoto = state.role==="employee";
+  const photoInputId = "pp-photo-input-" + id;
   const passport = el("div",{class:"passport-wrap"},[
     el("div",{class:"passport-header"},[
       el("div",{class:"pp-brand"},[
@@ -2731,7 +2808,21 @@ function renderPassportTab(emp, id){
         el("div",{},["ALLIED-TEK", el("small",{}, "People & Organization Management · ทีม Onboarding / P&OD")])
       ]),
       el("div",{class:"pp-title"}, "สมุดพกพนักงานใหม่"),
-      el("div",{class:"pp-sub"}, "New Hire Passport · 119 วันแรกของฉัน")
+      el("div",{class:"pp-sub"}, "New Hire Passport · 119 วันแรกของฉัน"),
+      el("div",{class:"pp-photo-wrap"},[
+        emp.photoUrl
+          ? el("img",{class:"pp-photo", src:emp.photoUrl, alt:"รูปโปรไฟล์"})
+          : el("div",{class:"pp-photo-placeholder"}, "👤"),
+        canEditPhoto ? el("input",{
+            type:"file", id:photoInputId, accept:"image/*", style:"display:none;",
+            onchange:(e)=>{ const f=e.target.files && e.target.files[0]; if(f) uploadEmployeePhoto(id, f); e.target.value=""; }
+          }) : null,
+        canEditPhoto ? el("button",{
+            class:"pp-photo-edit-btn", type:"button", title:"เปลี่ยนรูปโปรไฟล์",
+            disabled: state.photoUploading? "disabled" : null,
+            onclick:()=> document.getElementById(photoInputId).click()
+          }, state.photoUploading? "⏳":"✏️") : null
+      ])
     ]),
     el("div",{class:"passport-body"},[
       el("table",{class:"pp-table"},[

@@ -47,6 +47,7 @@ var SHEET_NAME = 'employees';
 var CONFIG_SHEET_NAME = 'config';
 var JD_SHEET_NAME = 'job_descriptions';
 var JD_DRIVE_ROOT_FOLDER_NAME = 'HROD - Job Description';
+var PHOTO_DRIVE_ROOT_FOLDER_NAME = 'HROD - Profile Photos';
 // Same logo the HROD web app shows (assets/logo.png), served from GitHub
 // Pages — fetched fresh each time a JD PDF is generated so the printed
 // form always matches the app's current logo.
@@ -96,6 +97,10 @@ function doPost(e) {
     if (action === 'generateJdPdf') {
       var result = generateJdPdf_(body.id, body.data);
       return jsonResponse({ ok: true, pdfUrl: result.pdfUrl, pdfFileId: result.pdfFileId, pdfUpdatedAt: result.pdfUpdatedAt });
+    }
+    if (action === 'uploadPhoto') {
+      var photo = uploadEmployeePhoto_(body.id, body.filename, body.mimeType, body.base64);
+      return jsonResponse({ ok: true, photoUrl: photo.photoUrl, photoFileId: photo.photoFileId, photoUpdatedAt: photo.photoUpdatedAt });
     }
     return jsonResponse({ ok: false, error: 'unknown action: ' + action });
   } catch (err) {
@@ -338,6 +343,57 @@ function insertLogo_(cell) {
 
 function sanitizeFileNamePart_(s) {
   return String(s || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/* ---- Employee profile photo upload ----
+ * Employees upload their own photo from the Employee Portal (cropped to a
+ * square on the client before sending). Stored in Drive under a single
+ * "HROD - Profile Photos" folder, named by employee id so re-uploads are
+ * easy to find; the previous file is removed when a new one replaces it so
+ * the folder doesn't accumulate stale copies.
+ * Returns a lh3.googleusercontent.com thumbnail URL rather than a
+ * drive.google.com/uc link — the former renders reliably inside an <img>
+ * tag without the occasional interstitial "can't scan for viruses" page
+ * drive.google.com shows for some file types.
+ */
+function uploadEmployeePhoto_(id, filename, mimeType, base64) {
+  if (!id) throw new Error('missing id');
+  if (!base64) throw new Error('missing image data');
+  var folder = getOrCreateSubfolder_(DriveApp.getRootFolder(), PHOTO_DRIVE_ROOT_FOLDER_NAME);
+
+  // Remove any previous photo file(s) for this employee so the folder
+  // doesn't accumulate old copies every time someone re-uploads.
+  var prefix = 'profile_' + sanitizeFileNamePart_(id);
+  var existing = folder.getFiles();
+  while (existing.hasNext()) {
+    var f = existing.next();
+    if (f.getName().indexOf(prefix) === 0) f.setTrashed(true);
+  }
+
+  var bytes = Utilities.base64Decode(base64);
+  var ext = (mimeType && mimeType.indexOf('png') !== -1) ? '.png' : '.jpg';
+  var blob = Utilities.newBlob(bytes, mimeType || 'image/jpeg', prefix + ext);
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  var photoFileId = file.getId();
+  var photoUrl = 'https://lh3.googleusercontent.com/d/' + photoFileId + '=s400';
+  var now = new Date().toISOString();
+
+  // Persist onto the employee's own record (merge, don't clobber other
+  // fields saved around the same time).
+  var sheet = getSheet_();
+  var row = findRow_(sheet, id);
+  var data = {};
+  if (row !== -1) {
+    try { data = JSON.parse(sheet.getRange(row, 2).getValue()) || {}; } catch (e) { data = {}; }
+  }
+  data.photoUrl = photoUrl;
+  data.photoFileId = photoFileId;
+  data.photoUpdatedAt = now;
+  upsertRow_(sheet, id, data);
+
+  return { photoUrl: photoUrl, photoFileId: photoFileId, photoUpdatedAt: now };
 }
 
 // Builds a Google Doc that mirrors the F-PM-25 "Smart Job Description" table
